@@ -2,15 +2,16 @@
 kotlin = "2.2.20"
 kotlinx-serialization = "1.8.1"
 asm = "9.9.1"
+classgraph = "4.8.184"
+javapoet = "0.9.0"
 
 [libraries]
 plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 asm-core = { module = "org.ow2.asm:asm", version.ref = "asm" }
 asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
-
-[bundles]
-asm = ["asm-core", "asm-util"]
+classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
+javapoet = { module = "com.palantir.javapoet:javapoet", version.ref = "javapoet" }
 
 [plugins]
 kotlinx-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

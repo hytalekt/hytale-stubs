@@ -14,5 +14,10 @@ repositories {
 dependencies {
     implementation(libs.plugin.kotlin)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.bundles.asm)
+    implementation(libs.classgraph)
+    implementation(libs.javapoet)
+
+    testImplementation(gradleTestKit())
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
 }
