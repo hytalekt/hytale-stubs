@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hytalekt/hytale-stubs/class-doc.schema.json",
+  "title": "Class Documentation",
+  "description": "Schema for documenting Java classes, interfaces, enums, and their members.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "documentation": {
+      "type": "string",
+      "description": "Main description of the class, interface, or enum."
+    },
+    "since": {
+      "type": "string",
+      "description": "Version when this type was added."
+    },
+    "deprecated": {
+      "type": "string",
+      "description": "Deprecation message. Presence indicates the type is deprecated."
+    },
+    "author": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of authors."
+    },
+    "see": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Cross-references to other classes or resources."
+    },
+    "methods": {
+      "type": "object",
+      "description": "Method documentation keyed by human-readable signature (e.g., 'getName()' or 'setPosition(double, double, double)').",
+      "additionalProperties": { "$ref": "#/$defs/methodDoc" }
+    },
+    "constructors": {
+      "type": "object",
+      "description": "Constructor documentation keyed by parameter signature (e.g., '()' or '(String, int)').",
+      "additionalProperties": { "$ref": "#/$defs/constructorDoc" }
+    },
+    "fields": {
+      "type": "object",
+      "description": "Field documentation keyed by field name.",
+      "additionalProperties": { "$ref": "#/$defs/fieldDoc" }
+    },
+    "enumConstants": {
+      "type": "object",
+      "description": "Enum constant documentation keyed by constant name.",
+      "additionalProperties": { "$ref": "#/$defs/enumConstantDoc" }
+    }
+  },
+  "$defs": {
+    "paramDoc": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Description of the parameter."
+        }
+      },
+      "additionalProperties": false
+    },
+    "throwsDoc": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "Description of when/why this exception is thrown."
+        }
+      },
+      "additionalProperties": false
+    },
+    "methodDoc": {
+      "type": "object",
+      "properties": {
+        "documentation": {
+          "type": "string",
+          "description": "Main description of the method."
+        },
+        "returns": {
+          "type": "string",
+          "description": "Description of the return value."
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameter documentation keyed by parameter name.",
+          "additionalProperties": { "$ref": "#/$defs/paramDoc" }
+        },
+        "throws": {
+          "type": "object",
+          "description": "Exception documentation keyed by exception type (simple name).",
+          "additionalProperties": { "$ref": "#/$defs/throwsDoc" }
+        },
+        "since": {
+          "type": "string",
+          "description": "Version when this method was added."
+        },
+        "deprecated": {
+          "type": "string",
+          "description": "Deprecation message."
+        },
+        "see": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Cross-references."
+        }
+      },
+      "additionalProperties": false
+    },
+    "constructorDoc": {
+      "type": "object",
+      "properties": {
+        "documentation": {
+          "type": "string",
+          "description": "Main description of the constructor."
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameter documentation keyed by parameter name.",
+          "additionalProperties": { "$ref": "#/$defs/paramDoc" }
+        },
+        "throws": {
+          "type": "object",
+          "description": "Exception documentation keyed by exception type (simple name).",
+          "additionalProperties": { "$ref": "#/$defs/throwsDoc" }
+        },
+        "since": {
+          "type": "string",
+          "description": "Version when this constructor was added."
+        },
+        "deprecated": {
+          "type": "string",
+          "description": "Deprecation message."
+        },
+        "see": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Cross-references."
+        }
+      },
+      "additionalProperties": false
+    },
+    "fieldDoc": {
+      "type": "object",
+      "properties": {
+        "documentation": {
+          "type": "string",
+          "description": "Description of the field."
+        },
+        "since": {
+          "type": "string",
+          "description": "Version when this field was added."
+        },
+        "deprecated": {
+          "type": "string",
+          "description": "Deprecation message."
+        },
+        "see": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Cross-references."
+        }
+      },
+      "additionalProperties": false
+    },
+    "enumConstantDoc": {
+      "type": "object",
+      "properties": {
+        "documentation": {
+          "type": "string",
+          "description": "Description of the enum constant."
+        },
+        "since": {
+          "type": "string",
+          "description": "Version when this constant was added."
+        },
+        "deprecated": {
+          "type": "string",
+          "description": "Deprecation message."
+        },
+        "see": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Cross-references."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
