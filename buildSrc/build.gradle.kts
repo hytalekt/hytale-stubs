@@ -1,6 +1,7 @@
 plugins {
     `kotlin-dsl`
     alias(libs.plugins.kotlinx.serialization)
+    alias(libs.plugins.kotest)
 }
 
 kotlin {
@@ -18,6 +19,5 @@ dependencies {
     implementation(libs.javapoet)
 
     testImplementation(gradleTestKit())
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
+    testImplementation(libs.bundles.kotest)
 }
