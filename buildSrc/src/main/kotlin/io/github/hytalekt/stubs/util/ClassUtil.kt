@@ -1,18 +1,21 @@
 package io.github.hytalekt.stubs.util
 
+import com.palantir.javapoet.ClassName
 import java.lang.reflect.Modifier
-import javax.lang.model.element.Modifier as ModifierType
+import javax.lang.model.element.Modifier as JaxModifier
 
-fun classModifiersOf(modifiers: Int): List<ModifierType> =
+val OBJECT_CLASS: ClassName = ClassName.get("java.lang", "Object")
+
+val STUB_EXCEPTION_CLASS: ClassName =
+    ClassName.get("io.github.kytale.stubs", "GeneratedStubException")
+
+fun classModifiersOf(modifiers: Int): List<JaxModifier> =
     listOfNotNull(
-        ModifierType.PUBLIC.takeIf { Modifier.isPublic(modifiers) },
-        ModifierType.PRIVATE.takeIf { Modifier.isPrivate(modifiers) },
-        ModifierType.PROTECTED.takeIf { Modifier.isProtected(modifiers) },
-        ModifierType.STATIC.takeIf { Modifier.isStatic(modifiers) },
-        ModifierType.FINAL.takeIf { Modifier.isFinal(modifiers) },
-        ModifierType.VOLATILE.takeIf { Modifier.isVolatile(modifiers) },
-        ModifierType.TRANSIENT.takeIf { Modifier.isTransient(modifiers) },
-        ModifierType.NATIVE.takeIf { Modifier.isNative(modifiers) },
-        ModifierType.ABSTRACT.takeIf { Modifier.isAbstract(modifiers) },
-        ModifierType.STRICTFP.takeIf { Modifier.isStrict(modifiers) },
+        JaxModifier.PUBLIC.takeIf { Modifier.isPublic(modifiers) },
+        JaxModifier.PRIVATE.takeIf { Modifier.isPrivate(modifiers) },
+        JaxModifier.PROTECTED.takeIf { Modifier.isProtected(modifiers) },
+        JaxModifier.STATIC.takeIf { Modifier.isStatic(modifiers) },
+        JaxModifier.FINAL.takeIf { Modifier.isFinal(modifiers) },
+        JaxModifier.ABSTRACT.takeIf { Modifier.isAbstract(modifiers) },
+        JaxModifier.STRICTFP.takeIf { Modifier.isStrict(modifiers) },
     )
