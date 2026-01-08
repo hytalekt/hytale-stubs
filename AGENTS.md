@@ -127,49 +127,57 @@ Polymorphic pattern for generating different Java type declarations:
 
 ## Current State and TODOs
 
-### Implemented
+### Implemented ✅
 
-- Gradle plugin infrastructure with custom SourceDirectorySet
-- Comprehensive type parsing with full generic support (tested with 40+ parametric test cases)
-- Modifier handling and conversion utilities
-- Complete documentation data models and JSON schema
-- Polymorphic TypeSpecBuilder pattern
-- EnumTypeSpecBuilder with enum constant support
-- Test infrastructure with 15+ test fixture classes
-- Migration to Kotest testing framework
+- ✅ Gradle plugin infrastructure with custom SourceDirectorySet
+- ✅ Comprehensive type parsing with full generic support (tested with 40+ parametric test cases)
+- ✅ Modifier handling and conversion utilities
+- ✅ Complete documentation data models and JSON schema
+- ✅ Polymorphic TypeSpecBuilder pattern
+- ✅ All TypeSpecBuilder implementations (Class, Interface, Enum, Record, Annotation)
+- ✅ Test infrastructure with 15+ test fixture classes and 90 passing tests
+- ✅ Migration to Kotest testing framework with JUnit5 runner
+- ✅ GenerateSourcesTask integration with spec builders
+- ✅ Constructor generation for classes, enums, and records
+- ✅ Field generation with proper modifiers and initializers
+- ✅ Method generation with proper signatures, throws clauses, and stub bodies
+- ✅ Generic type parameter support across all builders
+- ✅ Inheritance and interface implementation
+- ✅ Enum constant, constructor, and field generation
+- ✅ Interface default methods with bodies
+- ✅ Interface constant initializers
+- ✅ Record canonical constructors and accessor methods
+- ✅ Annotation default values and parameter values
+- ✅ Full annotation parameter support across all builders
 
-### In Progress / Not Yet Implemented
+### Recently Fixed Issues
 
-1. **GenerateSourcesTask integration** (`task/GenerateSourcesTask.kt:50`)
-   - TODO: "use spec builders"
-   - Task currently scans JAR but doesn't generate output
-   - Needs to integrate TypeSpecBuilder.builder() factory
-   - Must write generated JavaFile objects to outputDirectory
+The following issues were previously documented as limitations but have been fixed:
 
-2. **RecordTypeSpecBuilder** (`spec/RecordTypeSpecBuilder.kt:10`)
-   - TODO: "Not yet implemented"
-   - Needs to generate Java record components
-   - Should handle record-specific features (compact constructors, accessor methods)
+1. **Throws Clauses** - Methods now correctly include `throws` declarations using `methodInfo.thrownExceptionNames`
+2. **Enum Constructors/Fields** - Enums now include constructors and non-constant fields (enum constructor parameters are filtered to exclude synthetic name/ordinal)
+3. **Record Constructors** - Records now generate canonical constructors from their component fields
+4. **Record Accessors** - Record accessor methods (name(), age(), etc.) are now generated
+5. **Annotation Default Values** - Annotation members now include default values using `classInfo.annotationDefaultParameterValues`
+6. **Annotation Parameter Values** - Annotations now include their parameter values (e.g., `@Retention(RetentionPolicy.RUNTIME)`)
+7. **Interface Field Initializers** - Interface constants now include their initializer values using `fieldInfo.constantInitializerValue`
 
-3. **AnnotationTypeSpecBuilder** (`spec/AnnotationTypeSpecBuilder.kt:16`)
-   - TODO: "Not yet implemented"
-   - Needs to generate annotation elements
-   - Should handle default values for annotation members
+### Future Work / Lower Priority
 
-4. **TypeSpecBuilder implementations incomplete**
-   - ClassTypeSpecBuilder only creates empty class (missing fields, methods, superclass, interfaces, modifiers)
-   - InterfaceTypeSpecBuilder only creates empty interface (missing methods, extends, modifiers)
-   - Need to integrate existing utility functions (TypeUtil, MethodUtil, ClassUtil)
-
-5. **Documentation integration**
+1. **Documentation integration**
    - Documentation models exist but aren't used in code generation
    - Need to load JSON docs from docSourceSet
-   - Apply documentation to generated TypeSpecs as Javadoc
+   - Apply documentation to generated TypeSpecs as Javadoc via `.addJavadoc()`
 
-6. **SourceBuilder.kt refactoring**
+2. **SourceBuilder.kt refactoring**
    - Legacy monolithic implementation in `SourceBuilder.kt`
    - Being replaced by TypeSpecBuilder pattern
    - Contains reference implementation logic that should be migrated
+
+3. **Java 14+ Record keyword support**
+   - JavaPoet 0.9.0 doesn't support the `record` keyword
+   - Records are currently generated as `final class` with fields and constructor
+   - Future JavaPoet versions may add native record support
 
 ## Writing Tests
 
@@ -425,6 +433,27 @@ Documentation sources are treated as first-class build inputs alongside Java/Kot
 7. **Documentation**: Update this guide when adding significant features
 8. **Type safety**: Leverage Kotlin's type system and JavaPoet's builder patterns
 
+## Commit Message Guidelines
+
+Follow these conventions for commit messages:
+
+- **feat:** New feature or capability (e.g., `feat: nested inner classes`, `feat: gen test suite`)
+- **fix:** Bug fixes (e.g., `fix: RuntimeException in MethodUtil`, `fix: enum constructor parameters`)
+- **chore:** Build setup, dependencies, tooling (e.g., `chore: setup gradle`, `chore: migrate tests to kotest`)
+- **refactor:** Code restructuring without behavior change (e.g., `refactor: extract type & method utils`)
+- **docs:** Documentation updates (e.g., `docs: AGENTS.md`, `docs: README.md`)
+- **test:** Test-only changes (e.g., `test: add inner class test fixtures`)
+
+Examples:
+```
+feat: add documentation models & schema
+fix: enum constructor synthetic parameters
+chore: setup gradle build
+refactor: extract type & method utils from SourceBuilder
+docs: add comprehensive AGENTS.md guide
+test: add type parser test cases
+```
+
 ## Useful Commands
 
 ```bash
@@ -479,18 +508,20 @@ When starting work on this project:
 | File | Purpose | Status |
 |------|---------|--------|
 | `HytaleStubsPlugin.kt` | Gradle plugin entry point | Complete |
-| `GenerateSourcesTask.kt` | Main task for generation | TODO: integrate builders |
+| `GenerateSourcesTask.kt` | Main task for generation | Complete |
 | `TypeUtil.kt` | Type parsing utilities | Complete |
 | `MethodUtil.kt` | Method generation | Complete |
 | `ClassUtil.kt` | Modifier utilities | Complete |
 | `TypeSpecBuilder.kt` | Builder factory interface | Complete |
-| `ClassTypeSpecBuilder.kt` | Class generation | Minimal stub |
-| `InterfaceTypeSpecBuilder.kt` | Interface generation | Minimal stub |
+| `ClassTypeSpecBuilder.kt` | Class generation | Complete |
+| `InterfaceTypeSpecBuilder.kt` | Interface generation | Complete |
 | `EnumTypeSpecBuilder.kt` | Enum generation | Complete |
-| `RecordTypeSpecBuilder.kt` | Record generation | TODO |
-| `AnnotationTypeSpecBuilder.kt` | Annotation generation | TODO |
+| `RecordTypeSpecBuilder.kt` | Record generation | Complete |
+| `AnnotationTypeSpecBuilder.kt` | Annotation generation | Complete |
 | `DocModels.kt` | Documentation models | Complete |
 | `TypeNameParserTest.kt` | Type parsing tests | Complete |
+| `TypeSpecBuilderTest.kt` | Builder integration tests | Complete |
+| `KnownLimitationsTest.kt` | Feature verification tests | Complete |
 
 ## Questions?
 
