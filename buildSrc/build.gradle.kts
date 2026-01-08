@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.classgraph)
     implementation(libs.javapoet)
+    implementation(libs.asm.core)
 
     testImplementation(gradleTestKit())
     testImplementation(libs.bundles.kotest)

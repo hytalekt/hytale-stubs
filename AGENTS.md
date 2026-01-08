@@ -171,18 +171,13 @@ The following issues were previously documented as limitations but have been fix
 15. **Bridge Methods Filtered** - Compiler-generated bridge methods for type erasure are now excluded from generated code - Fixed in all TypeSpecBuilders
 16. **Inner Class Nesting** - Inner classes are now correctly nested only in their immediate parent, not duplicated at multiple levels - Fixed in all TypeSpecBuilders
 17. **Field Generation Consolidated** - Created `FieldUtil.kt` with common `buildField()`, `getDefaultInitializer()`, and `formatFieldInitializer()` functions used across all builders
+18. **Method Parameter Names** - Created `ParameterNameExtractor.kt` that uses ASM to read parameter names from LocalVariableTable in bytecode - Works even without `-parameters` compile flag - Three-tier fallback: ClassGraph names (if available) → ASM LocalVariableTable → generic names (param0, param1) - Handles synthetic parameters (enum name/ordinal, inner class outer reference) - Fixed in `MethodUtil.kt` with new `ParameterNameExtractor` utility
 
 ### Known Limitations
 
 The following limitations are documented for future enhancement:
 
-1. **Method parameter names**
-   - ClassGraph has limitations in extracting method parameter names
-   - Parameter names are only available if compiled with `-parameters` flag
-   - **Recommended solution**: Use ASM alongside ClassGraph to extract parameter names from LocalVariableTable
-   - ASM can read parameter names even without `-parameters` flag
-   - Fallback to `param0`, `param1`, etc. when names unavailable
-   - Location: `MethodUtil.kt` and parameter handling
+(No current limitations - all major features implemented!)
 
 ### Future Work / Lower Priority
 
@@ -530,6 +525,7 @@ When starting work on this project:
 | `MethodUtil.kt` | Method generation | Complete |
 | `ClassUtil.kt` | Modifier utilities | Complete |
 | `FieldUtil.kt` | Field generation utilities | Complete |
+| `ParameterNameExtractor.kt` | ASM-based parameter name extraction | Complete |
 | `TypeSpecBuilder.kt` | Builder factory interface | Complete |
 | `ClassTypeSpecBuilder.kt` | Class generation | Complete |
 | `InterfaceTypeSpecBuilder.kt` | Interface generation | Complete |

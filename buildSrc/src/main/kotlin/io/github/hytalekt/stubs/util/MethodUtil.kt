@@ -170,11 +170,19 @@ private fun addMethodParameters(
             else -> 0
         }
 
+    // Extract parameter names using ASM LocalVariableTable
+    val parameterNames =
+        ParameterNameExtractor.extractParameterNames(
+            clazz,
+            methodInfo,
+            paramsToSkip,
+        )
+
     methodInfo.parameterInfo.drop(paramsToSkip).forEachIndexed { index, param ->
         val paramSpec =
             ParameterSpec.builder(
                 parseTypeName(param.typeSignatureOrTypeDescriptor.toString()),
-                param.name ?: "param$index",
+                parameterNames.getOrElse(index) { "param$index" },
             )
 
         param.annotationInfo?.forEach { annotationInfo ->
