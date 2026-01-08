@@ -16,6 +16,21 @@ public class TestInnerClasses {
         public String getOuterValue() {
             return outerField;
         }
+
+        public class DeepInnerClass {
+            private String deepInnerField;
+
+            public DeepInnerClass() {
+            }
+
+            public String getDeepInnerValue() {
+                return innerField;
+            }
+
+            public String getDeepOuterValue() {
+                return outerField;
+            }
+        }
     }
 
     public static class StaticInnerClass {
