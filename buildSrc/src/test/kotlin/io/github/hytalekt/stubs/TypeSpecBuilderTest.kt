@@ -81,6 +81,22 @@ class TypeSpecBuilderTest :
                 code shouldContain "class TestExtendingClass extends TestAbstractClass"
             }
 
+            test("should not include superclass constructors in subclass") {
+                val classInfo = scanResult.getClassInfo("io.github.hytalekt.stubs.suite.TestExtendingClass")
+                classInfo.shouldNotBeNull()
+
+                val builder = ClassTypeSpecBuilder(classInfo)
+                val typeSpec = builder.build()
+
+                val code = generateJavaCode("io.github.hytalekt.stubs.suite", typeSpec)
+
+                // TestExtendingClass only has a no-arg constructor
+                code shouldContain "public TestExtendingClass()"
+                // Should NOT include the superclass's constructor TestExtendingClass(String)
+                code shouldNotContain "TestExtendingClass(String"
+                code shouldNotContain "TestExtendingClass(java.lang.String"
+            }
+
             test("should build class with multiple interfaces") {
                 val classInfo = scanResult.getClassInfo("io.github.hytalekt.stubs.suite.TestMultipleInheritance")
                 classInfo.shouldNotBeNull()

@@ -78,9 +78,10 @@ class ClassTypeSpecBuilder(
     }
 
     private fun addMethods(typeSpec: TypeSpec.Builder) {
-        // Add constructors
+        // Add constructors - only those declared in this class, not inherited from superclass
         classInfo.constructorInfo
             .filter { !it.isSynthetic }
+            .filter { it.classInfo.name == classInfo.name } // Only include constructors declared in this class
             .forEach { constructorInfo ->
                 typeSpec.addMethod(buildMethod(constructorInfo, classInfo))
             }
