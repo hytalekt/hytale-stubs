@@ -21,16 +21,14 @@ class RecordTypeSpecBuilder(
 
         val typeSpec =
             TypeSpec
-                .classBuilder(classInfo.simpleName)
+                .recordBuilder(classInfo.simpleName)
                 .addModifiers(Modifier.FINAL)
 
         addModifiers(typeSpec)
         addTypeParameters(typeSpec)
         addSuperinterfaces(typeSpec)
         addAnnotations(typeSpec)
-        addRecordComponents(typeSpec)
-        addCanonicalConstructor(typeSpec)
-        addAccessorMethods(typeSpec)
+        addRecordConstructor(typeSpec)
         addMethods(typeSpec)
 
         return typeSpec.build()
@@ -63,37 +61,25 @@ class RecordTypeSpecBuilder(
         }
     }
 
-    private fun addRecordComponents(typeSpec: TypeSpec.Builder) {
-        classInfo.fieldInfo
-            .filter { !it.isSynthetic }
-            .forEach { fieldInfo ->
-                val componentType =
-                    parseTypeName(
-                        fieldInfo.typeSignatureOrTypeDescriptor.toString(),
-                    )
-                val fieldSpec =
-                    com.palantir.javapoet.FieldSpec.builder(
-                        componentType,
-                        fieldInfo.name,
-                        Modifier.PRIVATE,
-                        Modifier.FINAL,
-                    )
-
-                fieldInfo.annotationInfo?.forEach { annotationInfo ->
-                    fieldSpec.addAnnotation(buildAnnotationSpec(annotationInfo))
-                }
-
-                typeSpec.addField(fieldSpec.build())
-            }
-    }
-
-    private fun addCanonicalConstructor(typeSpec: TypeSpec.Builder) {
-        // Build canonical constructor from record components (fields)
+    private fun addRecordConstructor(typeSpec: TypeSpec.Builder) {
+        // Build record constructor with components as parameters
+        // The recordConstructor method defines both the record components and the compact constructor body
         val constructorBuilder =
             MethodSpec
-                .constructorBuilder()
-                .addModifiers(Modifier.PUBLIC)
+                .compactConstructorBuilder()
+                .addStatement(METHOD_BODY)
 
+        // Add visibility modifier to match the record's access level
+        val recordModifiers = classModifiersOf(classInfo.modifiers)
+        val visibilityModifier =
+            recordModifiers.firstOrNull {
+                it == Modifier.PUBLIC || it == Modifier.PROTECTED || it == Modifier.PRIVATE
+            }
+        if (visibilityModifier != null) {
+            constructorBuilder.addModifiers(visibilityModifier)
+        }
+
+        // Add record components as parameters to the constructor
         classInfo.fieldInfo
             .filter { !it.isSynthetic }
             .forEach { fieldInfo ->
@@ -101,36 +87,25 @@ class RecordTypeSpecBuilder(
                     parseTypeName(
                         fieldInfo.typeSignatureOrTypeDescriptor.toString(),
                     )
-                constructorBuilder.addParameter(componentType, fieldInfo.name)
+
+                // Add component annotations
+                val paramBuilder =
+                    com.palantir.javapoet.ParameterSpec
+                        .builder(componentType, fieldInfo.name)
+                fieldInfo.annotationInfo?.forEach { annotationInfo ->
+                    paramBuilder.addAnnotation(buildAnnotationSpec(annotationInfo))
+                }
+
+                constructorBuilder.addParameter(paramBuilder.build())
             }
 
-        constructorBuilder.addStatement(METHOD_BODY)
-        typeSpec.addMethod(constructorBuilder.build())
-    }
-
-    private fun addAccessorMethods(typeSpec: TypeSpec.Builder) {
-        // Add accessor methods for each record component
-        classInfo.fieldInfo
-            .filter { !it.isSynthetic }
-            .forEach { fieldInfo ->
-                val componentType =
-                    parseTypeName(
-                        fieldInfo.typeSignatureOrTypeDescriptor.toString(),
-                    )
-                val accessorBuilder =
-                    MethodSpec
-                        .methodBuilder(fieldInfo.name)
-                        .addModifiers(Modifier.PUBLIC)
-                        .returns(componentType)
-                        .addStatement(METHOD_BODY)
-
-                typeSpec.addMethod(accessorBuilder.build())
-            }
+        typeSpec.recordConstructor(constructorBuilder.build())
     }
 
     private fun addMethods(typeSpec: TypeSpec.Builder) {
         classInfo.methodInfo
             .filter { !it.isSynthetic || !isSyntheticAccessor(it) }
+            .filter { !it.isBridge } // Filter out bridge methods (type erasure)
             .filter { !it.isConstructor }
             .filter { !isGeneratedRecordAccessor(it) }
             .forEach { methodInfo ->

@@ -40,7 +40,7 @@ fun buildMethod(
 
     addMethodModifiers(methodBuilder, methodInfo, clazz)
     addMethodTypeParameters(methodBuilder, methodInfo)
-    addMethodAnnotations(methodBuilder, methodInfo)
+    addMethodAnnotations(methodBuilder, methodInfo, clazz)
     addMethodReturnType(methodBuilder, methodInfo)
     addMethodParameters(methodBuilder, methodInfo, clazz)
     addMethodExceptions(methodBuilder, methodInfo)
@@ -75,12 +75,75 @@ private fun addMethodTypeParameters(
 private fun addMethodAnnotations(
     methodBuilder: MethodSpec.Builder,
     methodInfo: MethodInfo,
+    clazz: ClassInfo,
 ) {
+    // Add @Override if method overrides a superclass or interface method
+    if (shouldAddOverrideAnnotation(methodInfo, clazz)) {
+        methodBuilder.addAnnotation(Override::class.java)
+    }
+
     methodInfo.annotationInfo?.forEach { annotationInfo ->
         methodBuilder.addAnnotation(
             buildAnnotationSpec(annotationInfo),
         )
     }
+}
+
+private fun shouldAddOverrideAnnotation(
+    methodInfo: MethodInfo,
+    clazz: ClassInfo,
+): Boolean {
+    // Don't add @Override to constructors, static methods, or private methods
+    if (methodInfo.isConstructor ||
+        Modifier.isStatic(methodInfo.modifiers) ||
+        Modifier.isPrivate(methodInfo.modifiers)
+    ) {
+        return false
+    }
+
+    // Check if class has a non-Object superclass or implements any interface
+    val hasSuperclass = clazz.superclasses?.any { it.name != "java.lang.Object" } == true
+    val hasInterfaces = clazz.interfaces.isNotEmpty()
+
+    if (!hasSuperclass && !hasInterfaces) {
+        return false
+    }
+
+    // Check if any superclass or interface has a method with the same name
+    // This is a simplified check - ideally we'd match full signatures
+    val methodName = methodInfo.name
+    val paramCount = methodInfo.parameterInfo.size
+
+    // Check superclasses
+    clazz.superclasses?.forEach { superclass ->
+        if (superclass.name != "java.lang.Object") {
+            val hasMatchingMethod =
+                superclass.methodInfo.any {
+                    it.name == methodName && it.parameterInfo.size == paramCount && !it.isPrivate
+                }
+            if (hasMatchingMethod) return true
+        }
+    }
+
+    // Check interfaces (including inherited ones)
+    clazz.interfaces.forEach { interfaceInfo ->
+        val hasMatchingMethod =
+            interfaceInfo.methodInfo.any {
+                it.name == methodName && it.parameterInfo.size == paramCount
+            }
+        if (hasMatchingMethod) return true
+
+        // Check parent interfaces recursively
+        interfaceInfo.interfaces.forEach { parentInterface ->
+            val hasMatchingInParent =
+                parentInterface.methodInfo.any {
+                    it.name == methodName && it.parameterInfo.size == paramCount
+                }
+            if (hasMatchingInParent) return true
+        }
+    }
+
+    return false
 }
 
 private fun addMethodReturnType(
@@ -144,6 +207,58 @@ private fun addMethodBody(
     val needsBody = !isAbstract && !clazz.isInterface && !clazz.isAnnotation
 
     if (needsBody || isInterfaceDefaultMethod) {
+        // For constructors, add super() call if class has a non-Object superclass
+        if (methodInfo.isConstructor) {
+            val superclass = clazz.superclasses?.firstOrNull { it.name != "java.lang.Object" }
+            if (superclass != null) {
+                addSuperConstructorCall(methodBuilder, superclass)
+            }
+        }
         methodBuilder.addStatement(METHOD_BODY)
+    }
+}
+
+private fun addSuperConstructorCall(
+    methodBuilder: MethodSpec.Builder,
+    superclass: ClassInfo,
+) {
+    // Find a constructor in the superclass, preferring no-arg constructor
+    val superConstructor =
+        superclass.constructorInfo
+            .filter { !it.isSynthetic }
+            .minByOrNull { it.parameterInfo.size }
+
+    if (superConstructor != null) {
+        // Skip synthetic parameters for enums and inner classes
+        val paramsToSkip =
+            when {
+                superclass.isEnum -> 2
+                superclass.isInnerClass && !Modifier.isStatic(superclass.modifiers) -> 1
+                else -> 0
+            }
+
+        val params = superConstructor.parameterInfo.drop(paramsToSkip)
+
+        if (params.isEmpty()) {
+            methodBuilder.addStatement("super()")
+        } else {
+            // Generate default values for parameters
+            val paramValues =
+                params.joinToString(", ") { param ->
+                    val typeName = param.typeSignatureOrTypeDescriptor.toString()
+                    when (typeName) {
+                        "boolean", "Z" -> "false"
+                        "byte", "B" -> "(byte) 0"
+                        "short", "S" -> "(short) 0"
+                        "int", "I" -> "0"
+                        "long", "J" -> "0L"
+                        "float", "F" -> "0.0f"
+                        "double", "D" -> "0.0"
+                        "char", "C" -> "'\\u0000'"
+                        else -> "null"
+                    }
+                }
+            methodBuilder.addStatement("super($paramValues)")
+        }
     }
 }

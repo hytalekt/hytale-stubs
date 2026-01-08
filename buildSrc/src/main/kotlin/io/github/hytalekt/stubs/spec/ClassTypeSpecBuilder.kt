@@ -1,13 +1,12 @@
 package io.github.hytalekt.stubs.spec
 
-import com.palantir.javapoet.FieldSpec
 import com.palantir.javapoet.TypeSpec
 import io.github.classgraph.ClassInfo
+import io.github.hytalekt.stubs.util.buildField
 import io.github.hytalekt.stubs.util.buildMethod
 import io.github.hytalekt.stubs.util.buildTypeVariable
 import io.github.hytalekt.stubs.util.classModifiersOf
 import io.github.hytalekt.stubs.util.isSyntheticAccessor
-import io.github.hytalekt.stubs.util.methodModifiersOf
 import io.github.hytalekt.stubs.util.parseTypeName
 import javax.lang.model.element.Modifier
 
@@ -74,22 +73,7 @@ class ClassTypeSpecBuilder(
         classInfo.fieldInfo
             .filter { !it.isSynthetic }
             .forEach { fieldInfo ->
-                val fieldType =
-                    parseTypeName(
-                        fieldInfo.typeSignatureOrTypeDescriptor.toString(),
-                    )
-                val fieldSpec =
-                    FieldSpec.builder(
-                        fieldType,
-                        fieldInfo.name,
-                        *methodModifiersOf(fieldInfo.modifiers).toTypedArray(),
-                    )
-
-                fieldInfo.annotationInfo?.forEach { annotationInfo ->
-                    fieldSpec.addAnnotation(buildAnnotationSpec(annotationInfo))
-                }
-
-                typeSpec.addField(fieldSpec.build())
+                typeSpec.addField(buildField(fieldInfo))
             }
     }
 
@@ -104,6 +88,7 @@ class ClassTypeSpecBuilder(
         // Add regular methods
         classInfo.methodInfo
             .filter { !it.isSynthetic || !isSyntheticAccessor(it) }
+            .filter { !it.isBridge } // Filter out bridge methods (type erasure)
             .forEach { methodInfo ->
                 typeSpec.addMethod(buildMethod(methodInfo, classInfo))
             }
@@ -112,7 +97,12 @@ class ClassTypeSpecBuilder(
     private fun addInnerClasses(typeSpec: TypeSpec.Builder) {
         classInfo.innerClasses
             .filter { !it.isAnonymousInnerClass && !it.isSynthetic }
-            .forEach { innerClassInfo ->
+            // Only include direct children - filter out nested inner classes
+            .filter { innerClassInfo ->
+                // Check if the immediate outer class is the current class
+                val outerClass = innerClassInfo.outerClasses?.firstOrNull()
+                outerClass?.name == classInfo.name
+            }.forEach { innerClassInfo ->
                 val innerTypeSpec = buildInnerClassTypeSpec(innerClassInfo)
                 typeSpec.addType(innerTypeSpec)
             }

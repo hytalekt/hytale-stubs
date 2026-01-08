@@ -195,7 +195,7 @@ class TypeSpecBuilderTest :
         }
 
         context("RecordTypeSpecBuilder") {
-            test("should build record as final class with fields") {
+            test("should build record with components and compact constructor") {
                 val classInfo = scanResult.getClassInfo("io.github.hytalekt.stubs.suite.TestRecord")
                 classInfo.shouldNotBeNull()
 
@@ -204,10 +204,11 @@ class TypeSpecBuilderTest :
 
                 val code = generateJavaCode("io.github.hytalekt.stubs.suite", typeSpec)
 
-                code shouldContain "public final class TestRecord"
-                code shouldContain "private final String name"
-                code shouldContain "private final int age"
-                code shouldContain "private final double salary"
+                // Proper record syntax with components in header
+                code shouldContain "public final record TestRecord(String name, int age, double salary)"
+                // Compact constructor syntax
+                code shouldContain "TestRecord {"
+                // Custom method should still be included
                 code shouldContain "public String getInfo()"
             }
         }

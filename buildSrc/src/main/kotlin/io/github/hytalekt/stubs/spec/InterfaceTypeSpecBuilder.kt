@@ -1,14 +1,12 @@
 package io.github.hytalekt.stubs.spec
 
-import com.palantir.javapoet.CodeBlock
-import com.palantir.javapoet.FieldSpec
 import com.palantir.javapoet.TypeSpec
 import io.github.classgraph.ClassInfo
+import io.github.hytalekt.stubs.util.buildField
 import io.github.hytalekt.stubs.util.buildMethod
 import io.github.hytalekt.stubs.util.buildTypeVariable
 import io.github.hytalekt.stubs.util.classModifiersOf
 import io.github.hytalekt.stubs.util.isSyntheticAccessor
-import io.github.hytalekt.stubs.util.methodModifiersOf
 import io.github.hytalekt.stubs.util.parseTypeName
 
 class InterfaceTypeSpecBuilder(
@@ -67,36 +65,20 @@ class InterfaceTypeSpecBuilder(
         classInfo.fieldInfo
             .filter { !it.isSynthetic }
             .forEach { fieldInfo ->
-                val fieldType =
-                    parseTypeName(
-                        fieldInfo.typeSignatureOrTypeDescriptor.toString(),
-                    )
-                val fieldSpec =
-                    FieldSpec.builder(
-                        fieldType,
-                        fieldInfo.name,
-                        *methodModifiersOf(fieldInfo.modifiers).toTypedArray(),
-                    )
-
-                fieldInfo.annotationInfo?.forEach { annotationInfo ->
-                    fieldSpec.addAnnotation(buildAnnotationSpec(annotationInfo))
-                }
-
-                // Add constant initializer if present (for interface constants)
-                fieldInfo.constantInitializerValue?.let { value ->
-                    val initializer = formatFieldInitializer(value)
-                    if (initializer != null) {
-                        fieldSpec.initializer(initializer)
-                    }
-                }
-
-                typeSpec.addField(fieldSpec.build())
+                typeSpec.addField(
+                    buildField(
+                        fieldInfo,
+                        includeInitializer = true,
+                        constantValue = fieldInfo.constantInitializerValue,
+                    ),
+                )
             }
     }
 
     private fun addMethods(typeSpec: TypeSpec.Builder) {
         classInfo.methodInfo
             .filter { !it.isSynthetic || !isSyntheticAccessor(it) }
+            .filter { !it.isBridge } // Filter out bridge methods (type erasure)
             .forEach { methodInfo ->
                 typeSpec.addMethod(buildMethod(methodInfo, classInfo))
             }
@@ -105,43 +87,13 @@ class InterfaceTypeSpecBuilder(
     private fun addInnerClasses(typeSpec: TypeSpec.Builder) {
         classInfo.innerClasses
             .filter { !it.isAnonymousInnerClass && !it.isSynthetic }
-            .forEach { innerClassInfo ->
+            // Only include direct children - filter out nested inner classes
+            .filter { innerClassInfo ->
+                val outerClass = innerClassInfo.outerClasses?.firstOrNull()
+                outerClass?.name == classInfo.name
+            }.forEach { innerClassInfo ->
                 val innerTypeSpec = buildInnerClassTypeSpec(innerClassInfo)
                 typeSpec.addType(innerTypeSpec)
             }
     }
 }
-
-/**
- * Formats a field constant initializer value for code generation.
- */
-internal fun formatFieldInitializer(value: Any?): CodeBlock? =
-    when (value) {
-        null -> {
-            null
-        }
-
-        is String -> {
-            CodeBlock.of($$"$S", value)
-        }
-
-        is Char -> {
-            CodeBlock.of($$"'$L'", value)
-        }
-
-        is Boolean, is Byte, is Short, is Int, is Long -> {
-            CodeBlock.of($$"$L", value)
-        }
-
-        is Float -> {
-            CodeBlock.of($$"$Lf", value)
-        }
-
-        is Double -> {
-            CodeBlock.of($$"$L", value)
-        }
-
-        else -> {
-            CodeBlock.of($$"$L", value)
-        }
-    }

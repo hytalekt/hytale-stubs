@@ -161,6 +161,28 @@ The following issues were previously documented as limitations but have been fix
 5. **Annotation Default Values** - Annotation members now include default values using `classInfo.annotationDefaultParameterValues`
 6. **Annotation Parameter Values** - Annotations now include their parameter values (e.g., `@Retention(RetentionPolicy.RUNTIME)`)
 7. **Interface Field Initializers** - Interface constants now include their initializer values using `fieldInfo.constantInitializerValue`
+8. **Enum Constructors Removed** - Enums no longer generate constructors (they can't be instantiated at runtime) - Fixed in `EnumTypeSpecBuilder.kt`
+9. **Enum values()/valueOf() Excluded** - These compiler-generated methods are no longer included in enum stubs - Fixed in `EnumTypeSpecBuilder.kt`
+10. **Abstract Class Super Calls** - Constructors in subclasses now include proper `super()` calls with null/default values - Fixed in `MethodUtil.kt`
+11. **Static Final Field Initialization** - Static final fields now initialize with null (objects) or default values (primitives) - Fixed in `ClassTypeSpecBuilder.kt` and `EnumTypeSpecBuilder.kt`
+12. **Method Override Annotations** - Methods that override superclass/interface methods now include `@Override` annotation - Fixed in `MethodUtil.kt`
+13. **Record Constructor Access Levels** - Record compact constructors now match the record's visibility modifier - Fixed in `RecordTypeSpecBuilder.kt`
+14. **Enum Final Field Initialization** - Instance final fields in enums now initialize with default values (null for objects, defaults for primitives) - Fixed in `EnumTypeSpecBuilder.kt`
+15. **Bridge Methods Filtered** - Compiler-generated bridge methods for type erasure are now excluded from generated code - Fixed in all TypeSpecBuilders
+16. **Inner Class Nesting** - Inner classes are now correctly nested only in their immediate parent, not duplicated at multiple levels - Fixed in all TypeSpecBuilders
+17. **Field Generation Consolidated** - Created `FieldUtil.kt` with common `buildField()`, `getDefaultInitializer()`, and `formatFieldInitializer()` functions used across all builders
+
+### Known Limitations
+
+The following limitations are documented for future enhancement:
+
+1. **Method parameter names**
+   - ClassGraph has limitations in extracting method parameter names
+   - Parameter names are only available if compiled with `-parameters` flag
+   - **Recommended solution**: Use ASM alongside ClassGraph to extract parameter names from LocalVariableTable
+   - ASM can read parameter names even without `-parameters` flag
+   - Fallback to `param0`, `param1`, etc. when names unavailable
+   - Location: `MethodUtil.kt` and parameter handling
 
 ### Future Work / Lower Priority
 
@@ -173,11 +195,6 @@ The following issues were previously documented as limitations but have been fix
    - Legacy monolithic implementation in `SourceBuilder.kt`
    - Being replaced by TypeSpecBuilder pattern
    - Contains reference implementation logic that should be migrated
-
-3. **Java 14+ Record keyword support**
-   - JavaPoet 0.9.0 doesn't support the `record` keyword
-   - Records are currently generated as `final class` with fields and constructor
-   - Future JavaPoet versions may add native record support
 
 ## Writing Tests
 
@@ -512,6 +529,7 @@ When starting work on this project:
 | `TypeUtil.kt` | Type parsing utilities | Complete |
 | `MethodUtil.kt` | Method generation | Complete |
 | `ClassUtil.kt` | Modifier utilities | Complete |
+| `FieldUtil.kt` | Field generation utilities | Complete |
 | `TypeSpecBuilder.kt` | Builder factory interface | Complete |
 | `ClassTypeSpecBuilder.kt` | Class generation | Complete |
 | `InterfaceTypeSpecBuilder.kt` | Interface generation | Complete |
