@@ -2,7 +2,9 @@
 
 package io.github.hytalekt.stubs.task
 
+import com.palantir.javapoet.JavaFile
 import io.github.classgraph.ClassGraph
+import io.github.hytalekt.stubs.spec.TypeSpecBuilder
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
@@ -47,7 +49,16 @@ abstract class GenerateSourcesTask : DefaultTask() {
                     return@forEach
                 }
 
-                TODO("use spec builders")
+                val builder = TypeSpecBuilder(clazz)
+                val typeSpec = builder.build()
+
+                val packageName = clazz.packageName ?: ""
+                val javaFile =
+                    JavaFile
+                        .builder(packageName, typeSpec)
+                        .build()
+
+                javaFile.writeTo(outDir)
             }
         }
     }

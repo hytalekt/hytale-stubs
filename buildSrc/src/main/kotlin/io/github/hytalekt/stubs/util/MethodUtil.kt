@@ -6,10 +6,11 @@ import com.palantir.javapoet.MethodSpec
 import com.palantir.javapoet.ParameterSpec
 import io.github.classgraph.ClassInfo
 import io.github.classgraph.MethodInfo
+import io.github.hytalekt.stubs.spec.buildAnnotationSpec
 import java.lang.reflect.Modifier
 import javax.lang.model.element.Modifier as JaxModifier
 
-val METHOD_BODY = CodeBlock.of($$"throw new $T()", STUB_EXCEPTION_CLASS)
+val METHOD_BODY: CodeBlock = CodeBlock.of($$"throw new $T()", STUB_EXCEPTION_CLASS)
 
 fun methodModifiersOf(modifiers: Int): List<JaxModifier> =
     listOfNotNull(
@@ -26,7 +27,7 @@ fun methodModifiersOf(modifiers: Int): List<JaxModifier> =
         JaxModifier.STRICTFP.takeIf { Modifier.isStrict(modifiers) },
     )
 
-private fun buildMethod(
+fun buildMethod(
     methodInfo: MethodInfo,
     clazz: ClassInfo,
 ): MethodSpec {
@@ -41,7 +42,7 @@ private fun buildMethod(
     addMethodTypeParameters(methodBuilder, methodInfo)
     addMethodAnnotations(methodBuilder, methodInfo)
     addMethodReturnType(methodBuilder, methodInfo)
-    addMethodParameters(methodBuilder, methodInfo)
+    addMethodParameters(methodBuilder, methodInfo, clazz)
     addMethodExceptions(methodBuilder, methodInfo)
     addMethodBody(methodBuilder, methodInfo, clazz)
 
@@ -76,7 +77,9 @@ private fun addMethodAnnotations(
     methodInfo: MethodInfo,
 ) {
     methodInfo.annotationInfo?.forEach { annotationInfo ->
-        methodBuilder.addAnnotation(ClassName.bestGuess(annotationInfo.name))
+        methodBuilder.addAnnotation(
+            buildAnnotationSpec(annotationInfo),
+        )
     }
 }
 
@@ -92,8 +95,19 @@ private fun addMethodReturnType(
 private fun addMethodParameters(
     methodBuilder: MethodSpec.Builder,
     methodInfo: MethodInfo,
+    clazz: ClassInfo,
 ) {
-    methodInfo.parameterInfo.forEachIndexed { index, param ->
+    // Skip synthetic parameters:
+    // - Enum constructors: first two params are (String name, int ordinal)
+    // - Non-static inner class constructors: first param is outer class reference (this$0)
+    val paramsToSkip =
+        when {
+            clazz.isEnum && methodInfo.isConstructor -> 2
+            clazz.isInnerClass && !Modifier.isStatic(clazz.modifiers) && methodInfo.isConstructor -> 1
+            else -> 0
+        }
+
+    methodInfo.parameterInfo.drop(paramsToSkip).forEachIndexed { index, param ->
         val paramSpec =
             ParameterSpec.builder(
                 parseTypeName(param.typeSignatureOrTypeDescriptor.toString()),
@@ -101,7 +115,9 @@ private fun addMethodParameters(
             )
 
         param.annotationInfo?.forEach { annotationInfo ->
-            paramSpec.addAnnotation(ClassName.bestGuess(annotationInfo.name))
+            paramSpec.addAnnotation(
+                buildAnnotationSpec(annotationInfo),
+            )
         }
 
         methodBuilder.addParameter(paramSpec.build())
@@ -112,8 +128,9 @@ private fun addMethodExceptions(
     methodBuilder: MethodSpec.Builder,
     methodInfo: MethodInfo,
 ) {
-    methodInfo.thrownExceptions?.forEach { exception ->
-        methodBuilder.addException(ClassName.bestGuess(exception.name))
+    // Get thrown exception names directly from the method info
+    methodInfo.thrownExceptionNames?.forEach { exceptionName ->
+        methodBuilder.addException(ClassName.bestGuess(exceptionName))
     }
 }
 
