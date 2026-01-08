@@ -21,3 +21,7 @@ dependencies {
     testImplementation(gradleTestKit())
     testImplementation(libs.bundles.kotest)
 }
+
+tasks.test {
+    useJUnitPlatform()
+}
