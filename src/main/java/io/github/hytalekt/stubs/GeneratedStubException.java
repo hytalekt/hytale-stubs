@@ -1,4 +1,4 @@
-package io.github.kytale.stubs;
+package io.github.hytalekt.stubs;
 
 public class GeneratedStubException extends RuntimeException {
     public GeneratedStubException() {

@@ -18,6 +18,8 @@ dependencies {
     implementation(libs.classgraph)
     implementation(libs.javapoet)
     implementation(libs.asm.core)
+    implementation(libs.vineflower)
+    implementation(libs.javaparser)
 
     testImplementation(gradleTestKit())
     testImplementation(libs.bundles.kotest)

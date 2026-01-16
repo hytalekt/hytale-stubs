@@ -5,6 +5,8 @@ kotest = "6.0.7"
 asm = "9.9.1"
 classgraph = "4.8.184"
 javapoet = "0.9.0"
+vineflower = "1.11.2"
+javaparser = "3.26.4"
 
 [libraries]
 plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -13,6 +15,8 @@ asm-core = { module = "org.ow2.asm:asm", version.ref = "asm" }
 asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 javapoet = { module = "com.palantir.javapoet:javapoet", version.ref = "javapoet" }
+vineflower = { module = "org.vineflower:vineflower", version.ref = "vineflower" }
+javaparser = { module = "com.github.javaparser:javaparser-core", version.ref = "javaparser" }
 kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
 kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 

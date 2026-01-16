@@ -1,65 +1,58 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package io.github.hytalekt.stubs.task
 
-import com.palantir.javapoet.JavaFile
-import io.github.classgraph.ClassGraph
-import io.github.hytalekt.stubs.spec.TypeSpecBuilder
+import io.github.hytalekt.stubs.vineflower.EnumPostProcessor
+import io.github.hytalekt.stubs.vineflower.ExamplePluginSource
 import org.gradle.api.DefaultTask
-import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.*
+import org.jetbrains.java.decompiler.api.Decompiler
+import org.jetbrains.java.decompiler.main.Fernflower
+import org.jetbrains.java.decompiler.main.decompiler.DirectoryResultSaver
+import org.jetbrains.java.decompiler.main.decompiler.PrintStreamLogger
+import org.jetbrains.java.decompiler.main.extern.IFernflowerLogger
+import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences
+import org.jetbrains.java.decompiler.main.plugins.PluginSources
+import java.io.File
 
 abstract class GenerateSourcesTask : DefaultTask() {
-    @get:InputFiles
+    @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceJar: RegularFileProperty
-
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val docSourceSet: ConfigurableFileCollection
 
     @get:OutputDirectory
     abstract val outputDirectory: DirectoryProperty
 
     init {
         group = "documentation"
-        description = "Generates sources from a JAR and doc sources"
+        description = "Generates sources from a JAR using Vineflower decompiler"
     }
 
     @TaskAction
     fun generateSources() {
+        val jarFile = sourceJar.get().asFile
         val outDir = outputDirectory.get().asFile
+
+        outDir.deleteRecursively()
         outDir.mkdirs()
 
-        val classGraph =
-            ClassGraph()
-                .enableClassInfo()
-                .enableMethodInfo()
-                .enableFieldInfo()
-                .enableAnnotationInfo()
-                .overrideClasspath(sourceJar.get().asFile)
+        val decompiler =
+            Decompiler
+                .builder()
+                .inputs(jarFile)
+                .option(IFernflowerPreferences.INCLUDE_ENTIRE_CLASSPATH, false)
+                .output(DirectoryResultSaver(outDir))
+                .allowedPrefixes("com/hypixel")
+                .logger(PrintStreamLogger(System.out))
+                .build()
 
-        classGraph.scan().use { result ->
-            result.allClasses.forEach { clazz ->
-                if (clazz.isInnerClass || clazz.isAnonymousInnerClass ||
-                    clazz.isPrivate
-                ) {
-                    return@forEach
-                }
+        decompiler.decompile()
 
-                val builder = TypeSpecBuilder(clazz)
-                val typeSpec = builder.build()
+        logger.lifecycle("Decompiled ${jarFile.name} to ${outDir.absolutePath}")
 
-                val packageName = clazz.packageName ?: ""
-                val javaFile =
-                    JavaFile
-                        .builder(packageName, typeSpec)
-                        .build()
-
-                javaFile.writeTo(outDir)
-            }
-        }
+        // Post-process enum declarations to remove fields, constructors, and constant arguments
+        logger.lifecycle("Post-processing enum declarations...")
+        EnumPostProcessor.processDirectory(outDir)
+        logger.lifecycle("Enum post-processing complete")
     }
 }
