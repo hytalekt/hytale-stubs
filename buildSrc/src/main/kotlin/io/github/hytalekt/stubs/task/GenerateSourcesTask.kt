@@ -1,19 +1,14 @@
 package io.github.hytalekt.stubs.task
 
-import io.github.hytalekt.stubs.vineflower.EnumPostProcessor
-import io.github.hytalekt.stubs.vineflower.ExamplePluginSource
+import io.github.hytalekt.stubs.postprocess.StubPostProcessor
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.*
 import org.jetbrains.java.decompiler.api.Decompiler
-import org.jetbrains.java.decompiler.main.Fernflower
 import org.jetbrains.java.decompiler.main.decompiler.DirectoryResultSaver
 import org.jetbrains.java.decompiler.main.decompiler.PrintStreamLogger
-import org.jetbrains.java.decompiler.main.extern.IFernflowerLogger
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences
-import org.jetbrains.java.decompiler.main.plugins.PluginSources
-import java.io.File
 
 abstract class GenerateSourcesTask : DefaultTask() {
     @get:InputFile
@@ -25,7 +20,7 @@ abstract class GenerateSourcesTask : DefaultTask() {
 
     init {
         group = "documentation"
-        description = "Generates sources from a JAR using Vineflower decompiler"
+        description = "Generates stub sources from a JAR using Vineflower decompiler"
     }
 
     @TaskAction
@@ -36,6 +31,8 @@ abstract class GenerateSourcesTask : DefaultTask() {
         outDir.deleteRecursively()
         outDir.mkdirs()
 
+        // Step 1: Decompile normally with Vineflower
+        logger.lifecycle("Decompiling ${jarFile.name}...")
         val decompiler =
             Decompiler
                 .builder()
@@ -47,12 +44,11 @@ abstract class GenerateSourcesTask : DefaultTask() {
                 .build()
 
         decompiler.decompile()
-
         logger.lifecycle("Decompiled ${jarFile.name} to ${outDir.absolutePath}")
 
-        // Post-process enum declarations to remove fields, constructors, and constant arguments
-        logger.lifecycle("Post-processing enum declarations...")
-        EnumPostProcessor.processDirectory(outDir)
-        logger.lifecycle("Enum post-processing complete")
+        // Step 2: Post-process to convert to stubs
+        logger.lifecycle("Post-processing decompiled sources into stubs...")
+        StubPostProcessor.processDirectory(outDir)
+        logger.lifecycle("Post-processing complete")
     }
 }

@@ -1,6 +1,5 @@
 package io.github.hytalekt.stubs
 
-import io.github.hytalekt.stubs.vineflower.ExamplePluginSource
 import org.gradle.api.Action
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -11,15 +10,10 @@ import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.withType
 import org.gradle.plugins.ide.idea.IdeaPlugin
 import org.gradle.plugins.ide.idea.model.IdeaModel
-import org.jetbrains.java.decompiler.main.plugins.PluginSources
 
 class HytaleStubsPlugin : Plugin<Project> {
     override fun apply(project: Project) {
         project.plugins.apply("java")
-
-        // Clear any previously registered sources to avoid duplicates from Gradle daemon
-        PluginSources.PLUGIN_SOURCES.removeIf { it is ExamplePluginSource }
-        PluginSources.PLUGIN_SOURCES.add(ExamplePluginSource())
 
         val sourceSets = project.extensions.getByType<SourceSetContainer>()
 
