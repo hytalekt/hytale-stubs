@@ -1,16 +1,9 @@
-import io.github.hytalekt.stubs.HytaleStubsPlugin
-import io.github.hytalekt.stubs.docs
 import io.github.hytalekt.stubs.task.DecompileJarTask
 import io.github.hytalekt.stubs.task.EnhanceWithAITask
-import io.github.hytalekt.stubs.task.GenerateSourcesTask
-import org.gradle.kotlin.dsl.register
 
 plugins {
     java
-    idea
 }
-
-apply<HytaleStubsPlugin>()
 
 repositories {
     mavenCentral()
@@ -19,15 +12,9 @@ repositories {
 sourceSets {
     main {
         java {
-            srcDir("build/gen/sources")
+            srcDir("build/gen/ai-stubs")
         }
     }
-}
-
-tasks.register<GenerateSourcesTask>("generateSources") {
-    docSourceSet = sourceSets.main.get().docs
-    sourceJar = File("testingdocs.jar")
-    outputDirectory = File("build/gen/sources")
 }
 
 // ============================================================================
@@ -58,15 +45,15 @@ tasks.register<GenerateSourcesTask>("generateSources") {
  * This task is cacheable - results are stored in Gradle build cache.
  */
 val decompileJar = tasks.register<DecompileJarTask>("decompileJar") {
-    sourceJar = File("testingdocs.jar")
-    outputDirectory = File("build/cache/decompiled")
+    sourceJar = file("input.jar")  // Configure this to your input JAR
+    outputDirectory = layout.buildDirectory.dir("cache/decompiled")
 }
 
 /**
  * Step 2: Enhance decompiled sources with Gemini AI.
  *
  * Usage:
- *   ./gradlew enhanceWithAI
+ *   ./gradlew generateAIStubs
  *
  * Options:
  *   -PopenRouterApiKey=YOUR_KEY   Set OpenRouter API key (or use OPENROUTER_API_KEY env var)
@@ -74,7 +61,7 @@ val decompileJar = tasks.register<DecompileJarTask>("decompileJar") {
  *   -Pmodel=model-id              Override the AI model (default: google/gemini-2.5-flash-preview)
  *
  * Example:
- *   ./gradlew enhanceWithAI -PopenRouterApiKey=sk-or-... -PclassFilter="com\.example\..*"
+ *   ./gradlew generateAIStubs -PopenRouterApiKey=sk-or-... -PclassFilter="com\.example\..*"
  *
  * Caching:
  *   - Decompilation results are cached via Gradle build cache
@@ -83,8 +70,8 @@ val decompileJar = tasks.register<DecompileJarTask>("decompileJar") {
 val enhanceWithAI = tasks.register<EnhanceWithAITask>("enhanceWithAI") {
     dependsOn(decompileJar)
     decompiledSourcesDir = decompileJar.flatMap { it.outputDirectory }
-    outputDirectory = File("build/gen/ai-stubs")
-    aiCacheDirectory = File("build/cache/ai-responses")
+    outputDirectory = layout.buildDirectory.dir("gen/ai-stubs")
+    aiCacheDirectory = layout.buildDirectory.dir("cache/ai-responses")
 
     // Get API key from project property or environment
     if (project.hasProperty("openRouterApiKey")) {
@@ -103,15 +90,10 @@ val enhanceWithAI = tasks.register<EnhanceWithAITask>("enhanceWithAI") {
 }
 
 /**
- * Convenience task that runs the full AI stub generation pipeline.
- * Alias for enhanceWithAI with dependencies.
+ * Main task - generates AI-enhanced stubs from a JAR.
  */
 tasks.register("generateAIStubs") {
-    group = "documentation"
+    group = "build"
     description = "Generates AI-enhanced stubs (decompile + AI enhancement)"
     dependsOn(enhanceWithAI)
-}
-
-tasks.build {
-    dependsOn("generateSources")
 }

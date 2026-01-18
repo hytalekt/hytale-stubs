@@ -1,26 +1,12 @@
 [versions]
 kotlin = "2.2.20"
 kotlinx-serialization = "1.8.1"
-kotest = "6.0.7"
-asm = "9.9.1"
-classgraph = "4.8.184"
-javapoet = "0.9.0"
 vineflower = "1.11.1"
 
 [libraries]
 plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
-asm-core = { module = "org.ow2.asm:asm", version.ref = "asm" }
-asm-util = { module = "org.ow2.asm:asm-util", version.ref = "asm" }
-classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
-javapoet = { module = "com.palantir.javapoet:javapoet", version.ref = "javapoet" }
-kotest-runner-junit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
-kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 vineflower = { module = "org.vineflower:vineflower", version.ref = "vineflower" }
 
 [plugins]
 kotlinx-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-kotest = { id = "io.kotest", version.ref = "kotest" }
-
-[bundles]
-kotest = ["kotest-runner-junit5", "kotest-assertions-core"]

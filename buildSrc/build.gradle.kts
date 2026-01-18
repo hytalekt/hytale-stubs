@@ -1,7 +1,6 @@
 plugins {
     `kotlin-dsl`
     alias(libs.plugins.kotlinx.serialization)
-    alias(libs.plugins.kotest)
 }
 
 kotlin {
@@ -15,15 +14,5 @@ repositories {
 dependencies {
     implementation(libs.plugin.kotlin)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.classgraph)
-    implementation(libs.javapoet)
-    implementation(libs.asm.core)
     implementation(libs.vineflower)
-
-    testImplementation(gradleTestKit())
-    testImplementation(libs.bundles.kotest)
-}
-
-tasks.test {
-    useJUnitPlatform()
 }
