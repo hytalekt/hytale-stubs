@@ -84,25 +84,27 @@ abstract class EnhanceWithAITask : DefaultTask() {
         aiCacheDir.mkdirs()
 
         // Collect all Java files
-        val sourceFiles = sourcesDir.walkTopDown()
-            .filter { it.isFile && it.extension == "java" }
-            .map { file ->
-                val relativePath = file.relativeTo(sourcesDir).path
-                val className = relativePath.removeSuffix(".java").replace(File.separatorChar, '.')
-                className to file
-            }
-            .toMap()
+        val sourceFiles =
+            sourcesDir
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "java" }
+                .map { file ->
+                    val relativePath = file.relativeTo(sourcesDir).path
+                    val className = relativePath.removeSuffix(".java").replace(File.separatorChar, '.')
+                    className to file
+                }.toMap()
 
         // Apply class filter if specified
         val filterPattern = classFilter.get()
-        val filteredFiles = if (filterPattern.isNotBlank()) {
-            val regex = Regex(filterPattern)
-            sourceFiles.filter { (className, _) ->
-                regex.containsMatchIn(className)
+        val filteredFiles =
+            if (filterPattern.isNotBlank()) {
+                val regex = Regex(filterPattern)
+                sourceFiles.filter { (className, _) ->
+                    regex.containsMatchIn(className)
+                }
+            } else {
+                sourceFiles
             }
-        } else {
-            sourceFiles
-        }
 
         if (filteredFiles.isEmpty()) {
             logger.lifecycle("No classes to process after filtering")
@@ -111,25 +113,28 @@ abstract class EnhanceWithAITask : DefaultTask() {
 
         logger.lifecycle("Enhancing ${filteredFiles.size} classes with Gemini AI...")
 
-        val apiKey = openRouterApiKey.orNull
-            ?: System.getenv("OPENROUTER_API_KEY")
-            ?: throw IllegalStateException(
-                "OpenRouter API key not provided. Set via openRouterApiKey property or OPENROUTER_API_KEY environment variable"
-            )
+        val apiKey =
+            openRouterApiKey.orNull
+                ?: System.getenv("OPENROUTER_API_KEY")
+                ?: throw IllegalStateException(
+                    "OpenRouter API key not provided. Set via openRouterApiKey property or OPENROUTER_API_KEY environment variable",
+                )
 
-        val client = OpenRouterClient(
-            apiKey = apiKey,
-            cacheDir = aiCacheDir,
-            model = model.get(),
-            temperature = temperature.get(),
-        )
+        val client =
+            OpenRouterClient(
+                apiKey = apiKey,
+                cacheDir = aiCacheDir,
+                model = model.get(),
+                temperature = temperature.get(),
+            )
 
         val generator = GeminiStubGenerator(client)
 
         // Read decompiled sources
-        val decompiledSources = filteredFiles.mapValues { (_, file) ->
-            file.readText()
-        }
+        val decompiledSources =
+            filteredFiles.mapValues { (_, file) ->
+                file.readText()
+            }
 
         // Track cache hits for reporting
         var cacheHits = 0

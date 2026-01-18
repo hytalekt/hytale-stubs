@@ -42,10 +42,11 @@ abstract class DecompileJarTask : DefaultTask() {
 
         logger.lifecycle("Decompiling ${jarFile.name} with Vineflower...")
 
-        val decompiler = VineflowerDecompiler(
-            outputDir = outDir,
-            logger = GradleDecompilerLogger(logger),
-        )
+        val decompiler =
+            VineflowerDecompiler(
+                outputDir = outDir,
+                logger = GradleDecompilerLogger(logger),
+            )
 
         val decompiledFiles = decompiler.decompile(jarFile)
         logger.lifecycle("Decompiled ${decompiledFiles.size} classes to ${outDir.absolutePath}")
@@ -55,7 +56,10 @@ abstract class DecompileJarTask : DefaultTask() {
 private class GradleDecompilerLogger(
     private val gradleLogger: org.gradle.api.logging.Logger,
 ) : DecompilerLogger {
-    override fun log(level: LogLevel, message: String) {
+    override fun log(
+        level: LogLevel,
+        message: String,
+    ) {
         when (level) {
             LogLevel.DEBUG -> gradleLogger.debug(message)
             LogLevel.INFO -> gradleLogger.info(message)

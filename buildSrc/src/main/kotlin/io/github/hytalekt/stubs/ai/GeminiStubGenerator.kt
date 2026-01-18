@@ -12,7 +12,8 @@ class GeminiStubGenerator(
     private val client: OpenRouterClient,
 ) {
     companion object {
-        private val SYSTEM_PROMPT = """
+        private val SYSTEM_PROMPT =
+            """
             |You are a Java code stub generator. Transform decompiled Java code into clean, documented API stubs.
             |
             |## YOUR TASKS
@@ -174,7 +175,7 @@ class GeminiStubGenerator(
             |## OUTPUT FORMAT
             |
             |Return ONLY the Java source code. No markdown code fences. No explanations. No comments about what you changed.
-        """.trimMargin()
+            """.trimMargin()
     }
 
     /**
@@ -184,16 +185,21 @@ class GeminiStubGenerator(
      * @param className The fully qualified class name (for context)
      * @return Improved Java source code with documentation and stub bodies
      */
-    fun generateStub(decompiledSource: String, className: String): String {
-        val prompt = buildString {
-            appendLine("Improve the following decompiled Java class: $className")
-            appendLine()
-            appendLine("```java")
-            appendLine(decompiledSource)
-            appendLine("```")
-        }
+    fun generateStub(
+        decompiledSource: String,
+        className: String,
+    ): String {
+        val prompt =
+            buildString {
+                appendLine("Improve the following decompiled Java class: $className")
+                appendLine()
+                appendLine("```java")
+                appendLine(decompiledSource)
+                appendLine("```")
+            }
 
-        return client.complete(prompt, SYSTEM_PROMPT)
+        return client
+            .complete(prompt, SYSTEM_PROMPT)
             .trim()
             .removePrefix("```java")
             .removeSuffix("```")
@@ -225,14 +231,18 @@ class GeminiStubGenerator(
      * Compute the cache key for a given source and class name.
      * Useful for checking if a response is cached before making a request.
      */
-    fun computeCacheKey(decompiledSource: String, className: String): String {
-        val prompt = buildString {
-            appendLine("Improve the following decompiled Java class: $className")
-            appendLine()
-            appendLine("```java")
-            appendLine(decompiledSource)
-            appendLine("```")
-        }
+    fun computeCacheKey(
+        decompiledSource: String,
+        className: String,
+    ): String {
+        val prompt =
+            buildString {
+                appendLine("Improve the following decompiled Java class: $className")
+                appendLine()
+                appendLine("```java")
+                appendLine(decompiledSource)
+                appendLine("```")
+            }
         return client.computeCacheKey(prompt, SYSTEM_PROMPT)
     }
 }

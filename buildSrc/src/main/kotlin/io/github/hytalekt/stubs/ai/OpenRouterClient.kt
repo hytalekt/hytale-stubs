@@ -22,14 +22,17 @@ class OpenRouterClient(
     private val model: String = "google/gemini-2.5-flash-preview",
     private val temperature: Double = 0.1, // Low temperature for consistency
 ) {
-    private val httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(30))
-        .build()
+    private val httpClient =
+        HttpClient
+            .newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build()
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        encodeDefaults = true
-    }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
 
     init {
         cacheDir.mkdirs()
@@ -39,7 +42,10 @@ class OpenRouterClient(
      * Send a prompt to the model and get a response.
      * Responses are cached based on prompt hash.
      */
-    fun complete(prompt: String, systemPrompt: String? = null): String {
+    fun complete(
+        prompt: String,
+        systemPrompt: String? = null,
+    ): String {
         val cacheKey = computeCacheKey(prompt, systemPrompt)
         val cacheFile = File(cacheDir, "$cacheKey.txt")
 
@@ -49,31 +55,35 @@ class OpenRouterClient(
         }
 
         // Build messages
-        val messages = buildList {
-            if (systemPrompt != null) {
-                add(Message(role = "system", content = systemPrompt))
+        val messages =
+            buildList {
+                if (systemPrompt != null) {
+                    add(Message(role = "system", content = systemPrompt))
+                }
+                add(Message(role = "user", content = prompt))
             }
-            add(Message(role = "user", content = prompt))
-        }
 
-        val request = ChatRequest(
-            model = model,
-            messages = messages,
-            temperature = temperature,
-            maxTokens = 8192,
-        )
+        val request =
+            ChatRequest(
+                model = model,
+                messages = messages,
+                temperature = temperature,
+                maxTokens = 8192,
+            )
 
         val requestBody = json.encodeToString(request)
 
-        val httpRequest = HttpRequest.newBuilder()
-            .uri(URI.create("https://openrouter.ai/api/v1/chat/completions"))
-            .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer $apiKey")
-            .header("HTTP-Referer", "https://github.com/hytalekt/hytale-stubs")
-            .header("X-Title", "Hytale Stubs Generator")
-            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-            .timeout(Duration.ofMinutes(5))
-            .build()
+        val httpRequest =
+            HttpRequest
+                .newBuilder()
+                .uri(URI.create("https://openrouter.ai/api/v1/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer $apiKey")
+                .header("HTTP-Referer", "https://github.com/hytalekt/hytale-stubs")
+                .header("X-Title", "Hytale Stubs Generator")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .timeout(Duration.ofMinutes(5))
+                .build()
 
         val response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString())
 
@@ -82,8 +92,12 @@ class OpenRouterClient(
         }
 
         val chatResponse = json.decodeFromString<ChatResponse>(response.body())
-        val content = chatResponse.choices.firstOrNull()?.message?.content
-            ?: throw OpenRouterException("No content in response")
+        val content =
+            chatResponse.choices
+                .firstOrNull()
+                ?.message
+                ?.content
+                ?: throw OpenRouterException("No content in response")
 
         // Cache the response
         cacheFile.writeText(content)
@@ -95,7 +109,10 @@ class OpenRouterClient(
      * Compute the cache key for a given prompt and system prompt.
      * Useful for checking if a response is cached before making a request.
      */
-    fun computeCacheKey(prompt: String, systemPrompt: String?): String {
+    fun computeCacheKey(
+        prompt: String,
+        systemPrompt: String?,
+    ): String {
         val combined = "${systemPrompt ?: ""}|$model|$temperature|$prompt"
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(combined.toByteArray())
@@ -103,7 +120,9 @@ class OpenRouterClient(
     }
 }
 
-class OpenRouterException(message: String) : RuntimeException(message)
+class OpenRouterException(
+    message: String,
+) : RuntimeException(message)
 
 @Serializable
 data class ChatRequest(

@@ -6,7 +6,7 @@ plugins {
     `maven-publish`
 }
 
-group = "com.github.hytalekt"  // JitPack uses com.github.<user>
+group = "com.github.hytalekt" // JitPack uses com.github.<user>
 version = project.findProperty("version") as String? ?: "0.0.1-SNAPSHOT"
 
 repositories {
@@ -34,10 +34,11 @@ sourceSets {
  * Step 1: Decompile JAR using Vineflower.
  * This task is cacheable - results are stored in Gradle build cache.
  */
-val decompileJar = tasks.register<DecompileJarTask>("decompileJar") {
-    sourceJar = file("input.jar")
-    outputDirectory = layout.buildDirectory.dir("cache/decompiled")
-}
+val decompileJar =
+    tasks.register<DecompileJarTask>("decompileJar") {
+        sourceJar = file("input.jar")
+        outputDirectory = layout.buildDirectory.dir("cache/decompiled")
+    }
 
 /**
  * Step 2: Enhance decompiled sources with Gemini AI.
@@ -50,12 +51,14 @@ val decompileJar = tasks.register<DecompileJarTask>("decompileJar") {
  *   -PclassFilter=regex       Filter classes by regex pattern
  *   -Pmodel=model-id          Override AI model (default: google/gemini-2.5-flash-preview)
  */
-val enhanceWithAI = tasks.register<EnhanceWithAITask>("enhanceWithAI") {
-    dependsOn(decompileJar)
-    decompiledSourcesDir = decompileJar.flatMap { it.outputDirectory }
-    outputDirectory = layout.buildDirectory.dir("gen/ai-stubs")
-    aiCacheDirectory = layout.buildDirectory.dir("cache/ai-responses")
+val enhanceWithAI =
+    tasks.register<EnhanceWithAITask>("enhanceWithAI") {
+        dependsOn(decompileJar)
+        decompiledSourcesDir = decompileJar.flatMap { it.outputDirectory }
+        outputDirectory = layout.buildDirectory.dir("gen/ai-stubs")
+        aiCacheDirectory = layout.buildDirectory.dir("cache/ai-responses")
 
+    /*
     if (project.hasProperty("openRouterApiKey")) {
         openRouterApiKey = project.property("openRouterApiKey") as String
     }
@@ -65,7 +68,9 @@ val enhanceWithAI = tasks.register<EnhanceWithAITask>("enhanceWithAI") {
     if (project.hasProperty("classFilter")) {
         classFilter = project.property("classFilter") as String
     }
-}
+
+     */
+    }
 
 tasks.register("generateAIStubs") {
     group = "build"
