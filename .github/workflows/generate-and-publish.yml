@@ -19,8 +19,7 @@ jobs:
   generate-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write  # Needed for creating releases and tags
 
     steps:
       - name: Checkout
@@ -55,10 +54,49 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      - name: Publish to GitHub Packages
-        run: ./gradlew publish -Pversion=${{ inputs.version }} --no-daemon
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build JAR
+        run: ./gradlew build -Pversion=${{ inputs.version }} --no-daemon
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Release v${{ inputs.version }}
+          body: |
+            ## Hytale Stubs v${{ inputs.version }}
+
+            AI-enhanced API stubs generated from Hytale game JAR.
+
+            ### Usage with JitPack (no authentication required)
+
+            ```kotlin
+            // settings.gradle.kts
+            dependencyResolutionManagement {
+                repositories {
+                    maven { url = uri("https://jitpack.io") }
+                }
+            }
+
+            // build.gradle.kts
+            dependencies {
+                compileOnly("com.github.hytalekt:hytale-stubs:${{ inputs.version }}")
+            }
+            ```
+
+            ### Direct Download
+
+            Download the JAR from the assets below.
+          files: |
+            build/libs/*.jar
+          draft: false
+          prerelease: false
 
       - name: Upload generated stubs as artifact
         uses: actions/upload-artifact@v4
