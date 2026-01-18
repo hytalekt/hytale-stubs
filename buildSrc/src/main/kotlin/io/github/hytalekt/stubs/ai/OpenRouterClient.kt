@@ -91,7 +91,11 @@ class OpenRouterClient(
         return content
     }
 
-    private fun computeCacheKey(prompt: String, systemPrompt: String?): String {
+    /**
+     * Compute the cache key for a given prompt and system prompt.
+     * Useful for checking if a response is cached before making a request.
+     */
+    fun computeCacheKey(prompt: String, systemPrompt: String?): String {
         val combined = "${systemPrompt ?: ""}|$model|$temperature|$prompt"
         val digest = MessageDigest.getInstance("SHA-256")
         val hash = digest.digest(combined.toByteArray())

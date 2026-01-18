@@ -79,4 +79,19 @@ class GeminiStubGenerator(
 
         return results
     }
+
+    /**
+     * Compute the cache key for a given source and class name.
+     * Useful for checking if a response is cached before making a request.
+     */
+    fun computeCacheKey(decompiledSource: String, className: String): String {
+        val prompt = buildString {
+            appendLine("Improve the following decompiled Java class: $className")
+            appendLine()
+            appendLine("```java")
+            appendLine(decompiledSource)
+            appendLine("```")
+        }
+        return client.computeCacheKey(prompt, SYSTEM_PROMPT)
+    }
 }
