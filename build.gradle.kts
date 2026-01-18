@@ -3,10 +3,19 @@ import io.github.hytalekt.stubs.task.EnhanceWithAITask
 
 plugins {
     java
+    `maven-publish`
 }
+
+group = "io.github.hytalekt"
+version = project.findProperty("version") as String? ?: "0.0.1-SNAPSHOT"
 
 repositories {
     mavenCentral()
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
 }
 
 sourceSets {
@@ -96,4 +105,58 @@ tasks.register("generateAIStubs") {
     group = "build"
     description = "Generates AI-enhanced stubs (decompile + AI enhancement)"
     dependsOn(enhanceWithAI)
+}
+
+// Ensure stubs are generated before compiling
+tasks.compileJava {
+    dependsOn(enhanceWithAI)
+}
+
+// ============================================================================
+// Maven Publishing to GitHub Packages
+// ============================================================================
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+
+            pom {
+                name = "Hytale Stubs"
+                description = "AI-enhanced API stubs generated from Hytale game JAR"
+                url = "https://github.com/hytalekt/hytale-stubs"
+
+                licenses {
+                    license {
+                        name = "MIT License"
+                        url = "https://opensource.org/licenses/MIT"
+                    }
+                }
+
+                developers {
+                    developer {
+                        id = "hytalekt"
+                        name = "Hytale Stubs Contributors"
+                    }
+                }
+
+                scm {
+                    connection = "scm:git:git://github.com/hytalekt/hytale-stubs.git"
+                    developerConnection = "scm:git:ssh://github.com/hytalekt/hytale-stubs.git"
+                    url = "https://github.com/hytalekt/hytale-stubs"
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/hytalekt/hytale-stubs")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
+                password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
+            }
+        }
+    }
 }

@@ -1,0 +1,68 @@
+name: Generate Stubs and Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      jar_url:
+        description: 'URL to the JAR file to decompile'
+        required: true
+        type: string
+      version:
+        description: 'Version to publish (e.g., 1.0.0)'
+        required: true
+        type: string
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  generate-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Cache AI responses
+        uses: actions/cache@v4
+        with:
+          path: build/cache/ai-responses
+          key: ai-stubs-${{ hashFiles('input.jar') }}
+          restore-keys: ai-stubs-
+
+      - name: Download input JAR
+        run: |
+          curl -L -o input.jar "${{ inputs.jar_url }}"
+          echo "Downloaded JAR:"
+          ls -la input.jar
+
+      - name: Generate AI-enhanced stubs
+        run: ./gradlew generateAIStubs --no-daemon
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Publish to GitHub Packages
+        run: ./gradlew publish -Pversion=${{ inputs.version }} --no-daemon
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload generated stubs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-stubs-${{ inputs.version }}
+          path: build/gen/ai-stubs/
+          retention-days: 90
