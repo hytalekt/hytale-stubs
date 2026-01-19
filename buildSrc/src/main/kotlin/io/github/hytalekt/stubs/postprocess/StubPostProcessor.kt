@@ -11,9 +11,11 @@ import com.github.javaparser.ast.NodeList
 import com.github.javaparser.ast.body.*
 import com.github.javaparser.ast.expr.*
 import com.github.javaparser.ast.stmt.*
+import com.github.javaparser.ast.type.ArrayType
 import com.github.javaparser.ast.type.ClassOrInterfaceType
 import com.github.javaparser.ast.type.PrimitiveType
 import com.github.javaparser.ast.type.Type
+import io.github.classgraph.TypeSignature
 import java.io.File
 
 /**
@@ -30,9 +32,11 @@ import java.io.File
  *   - Remove anonymous class bodies from enum constants
  * - Abstract methods: Remove abstract modifier, add throw body
  * - Switch sanitization: Removes problematic Java 21 switch expressions/patterns before parsing
+ * - Generic type resolution: Fixes erased types in super()/this() calls with full generic signatures
  */
 class StubPostProcessor(
     private val parser: JavaParser,
+    private val signatureIndex: ConstructorSignatureIndex? = null,
 ) {
     companion object {
         private const val STUB_EXCEPTION = "io.github.hytalekt.stubs.GeneratedStubException"
@@ -104,6 +108,9 @@ class StubPostProcessor(
         var modified = false
         var needsStubExceptionImport = false
 
+        // Get package name for fully qualified class name resolution
+        val packageName = cu.packageDeclaration.map { it.nameAsString }.orElse("")
+
         // Collect all type declarations
         val allEnums = mutableListOf<EnumDeclaration>()
         val allClasses = mutableListOf<ClassOrInterfaceDeclaration>()
@@ -118,7 +125,7 @@ class StubPostProcessor(
 
         // Process classes/interfaces
         allClasses.forEach { classDecl ->
-            val result = processClassOrInterface(classDecl)
+            val result = processClassOrInterface(classDecl, packageName, cu)
             if (result.modified) modified = true
             if (result.needsImport) needsStubExceptionImport = true
         }
@@ -220,7 +227,11 @@ class StubPostProcessor(
 
     // ==================== Class/Interface Processing ====================
 
-    private fun processClassOrInterface(classDecl: ClassOrInterfaceDeclaration): ProcessResult {
+    private fun processClassOrInterface(
+        classDecl: ClassOrInterfaceDeclaration,
+        packageName: String,
+        cu: CompilationUnit,
+    ): ProcessResult {
         var modified = false
         var needsImport = false
 
@@ -251,9 +262,19 @@ class StubPostProcessor(
             return ProcessResult(modified, needsImport)
         }
 
+        // Build context for constructor processing
+        // Handle nested classes - build the JVM-style name with $ separators
+        val className = classDecl.nameAsString
+        val fullyQualifiedName = buildFullyQualifiedClassName(classDecl, packageName)
+        val extendedType = classDecl.extendedTypes.firstOrNull()
+        // Use nameWithScope to get full nested class path (e.g., "Evaluator.OptionHolder" not just "OptionHolder")
+        val parentClass = extendedType?.nameWithScope
+        // Extract type arguments from extends clause (e.g., Layer<DynamicLayerEntry> -> ["DynamicLayerEntry"])
+        val parentTypeArgs = extendedType?.typeArguments?.orElse(null)?.map { it.asString() } ?: emptyList()
+
         // Process constructors
         classDecl.constructors.forEach { constructor ->
-            val result = processConstructor(constructor)
+            val result = processConstructor(constructor, fullyQualifiedName, parentClass, parentTypeArgs, packageName, cu)
             if (result.modified) modified = true
             if (result.needsImport) needsImport = true
         }
@@ -290,21 +311,37 @@ class StubPostProcessor(
         return ProcessResult(modified, needsImport)
     }
 
-    private fun processConstructor(constructor: ConstructorDeclaration): ProcessResult {
+    private fun processConstructor(
+        constructor: ConstructorDeclaration,
+        fullyQualifiedClassName: String,
+        parentClassName: String?,
+        parentTypeArgs: List<String>,
+        packageName: String,
+        cu: CompilationUnit,
+    ): ProcessResult {
         val body = constructor.body
         val statements = body.statements
 
         // Find super() or this() call if present
-        val delegateCall =
+        // Vineflower's ConstructorStubPass already replaced arguments with default values
+        var delegateCall =
             statements.firstOrNull { it is ExplicitConstructorInvocationStmt }
                 as? ExplicitConstructorInvocationStmt
+
+        // If no delegate call exists but class extends something, try to generate a super() call
+        // This handles Vineflower decompilation failures
+        if (delegateCall == null && parentClassName != null) {
+            delegateCall = generateSuperCall(parentClassName, packageName, fullyQualifiedClassName, cu)
+        }
 
         // Create new body with just delegate call (if any) + throw
         val newBody = BlockStmt()
         if (delegateCall != null) {
-            // Replace delegate call arguments with default values and fix invalid calls
-            val sanitizedCall = sanitizeDelegateCall(delegateCall, constructor)
-            newBody.addStatement(sanitizedCall)
+            // Fix generic types in the delegate call arguments
+            fixGenericTypesInDelegateCall(delegateCall, fullyQualifiedClassName, parentClassName, parentTypeArgs, packageName, cu)
+            // Strip private inner class references from generic type arguments
+            stripPrivateClassReferences(delegateCall, cu)
+            newBody.addStatement(delegateCall.clone())
         }
         newBody.addStatement(createThrowStatement())
 
@@ -313,153 +350,635 @@ class StubPostProcessor(
     }
 
     /**
-     * Sanitize delegate calls (this() or super()) by:
-     * 1. Replacing all arguments with cast expressions
-     * 2. Fixing invalid this() calls that should be super() calls
+     * Generate a super() call when Vineflower failed to decompile the constructor.
+     * Looks up the parent class constructors and creates a call with default arguments.
      */
-    private fun sanitizeDelegateCall(
-        call: ExplicitConstructorInvocationStmt,
-        constructor: ConstructorDeclaration,
-    ): ExplicitConstructorInvocationStmt {
-        // Get the containing class
-        val containingClass =
-            constructor.parentNode.orElse(null) as? ClassOrInterfaceDeclaration
+    private fun generateSuperCall(
+        parentClassName: String,
+        packageName: String,
+        fullyQualifiedClassName: String,
+        cu: CompilationUnit,
+    ): ExplicitConstructorInvocationStmt? {
+        if (signatureIndex == null) return null
 
-        // Determine if this should be a this() or super() call
-        val isThis =
-            if (call.isThis && containingClass != null) {
-                // Check if there's a matching constructor in this class
-                val argCount = call.arguments.size
-                containingClass.constructors.any { other ->
-                    other != constructor && other.parameters.size == argCount
-                }
-            } else {
-                call.isThis
-            }
+        val resolvedParent = resolveParentClassName(parentClassName, packageName, fullyQualifiedClassName, cu)
+        val constructors = signatureIndex.getConstructors(resolvedParent) ?: return null
 
-        // Find the target constructor to get parameter types
-        val targetParams = findTargetConstructorParams(call, constructor, containingClass, isThis)
+        // Find a constructor to call - prefer one with fewer parameters
+        val (descriptor, paramTypes) =
+            constructors.entries
+                .minByOrNull { it.value.size }
+                ?: return null
 
-        // Replace all arguments with casted new Object()
-        val defaultArgs = NodeList<Expression>()
-        if (targetParams != null) {
-            targetParams.forEach { param ->
-                defaultArgs.add(createCastedObject(param.type))
-            }
-        } else {
-            // Fallback: try to infer types from original arguments and cast
-            call.arguments.forEach { arg ->
-                defaultArgs.add(createCastedObjectFromExpr(arg))
-            }
+        // Generate default arguments for each parameter
+        val args = NodeList<Expression>()
+        for (paramSig in paramTypes) {
+            val defaultValue = createDefaultValueForSignature(paramSig, packageName, cu)
+            args.add(defaultValue)
         }
 
-        return ExplicitConstructorInvocationStmt(null, isThis, null, defaultArgs)
+        return ExplicitConstructorInvocationStmt(false, null, args)
     }
 
     /**
-     * Find the parameter list of the target constructor being called.
+     * Create a default value expression for a ClassGraph TypeSignature.
      */
-    private fun findTargetConstructorParams(
-        call: ExplicitConstructorInvocationStmt,
-        constructor: ConstructorDeclaration,
-        containingClass: ClassOrInterfaceDeclaration?,
-        isThis: Boolean,
-    ): NodeList<Parameter>? {
-        val argCount = call.arguments.size
+    private fun createDefaultValueForSignature(
+        sig: io.github.classgraph.TypeSignature,
+        packageName: String,
+        cu: CompilationUnit,
+    ): Expression =
+        when (sig) {
+            is io.github.classgraph.BaseTypeSignature -> {
+                when (sig.type) {
+                    Boolean::class.javaPrimitiveType -> {
+                        BooleanLiteralExpr(false)
+                    }
 
-        if (isThis && containingClass != null) {
-            // Find matching constructor in this class
-            return containingClass.constructors
-                .firstOrNull { other -> other != constructor && other.parameters.size == argCount }
-                ?.parameters
+                    Char::class.javaPrimitiveType -> {
+                        CharLiteralExpr('\u0000')
+                    }
+
+                    Byte::class.javaPrimitiveType, Short::class.javaPrimitiveType, Int::class.javaPrimitiveType -> {
+                        IntegerLiteralExpr("0")
+                    }
+
+                    Long::class.javaPrimitiveType -> {
+                        LongLiteralExpr("0L")
+                    }
+
+                    Float::class.javaPrimitiveType -> {
+                        DoubleLiteralExpr("0.0f")
+                    }
+
+                    Double::class.javaPrimitiveType -> {
+                        DoubleLiteralExpr("0.0")
+                    }
+
+                    else -> {
+                        IntegerLiteralExpr("0")
+                    }
+                }
+            }
+
+            else -> {
+                // For reference types, cast null to the appropriate type
+                val javaType = TypeSignatureRenderer.toJavaParserType(sig, emptyMap(), packageName, cu)
+                CastExpr(javaType, NullLiteralExpr())
+            }
         }
 
-        // For super() calls, we can't easily find the parent constructor
-        // Return null to use fallback
+    /**
+     * Strip type arguments that reference private inner classes.
+     * This handles cases where Vineflower generates casts to generic types
+     * with private inner class type arguments.
+     */
+    private fun stripPrivateClassReferences(
+        delegateCall: ExplicitConstructorInvocationStmt,
+        cu: CompilationUnit,
+    ) {
+        delegateCall.arguments.forEach { arg ->
+            if (arg is CastExpr) {
+                stripPrivateClassFromType(arg.type, cu)
+            }
+        }
+    }
+
+    /**
+     * Recursively strip type arguments that might reference private classes.
+     * When a type argument contains a reference to an inner class, remove all type arguments
+     * to use the raw type instead.
+     */
+    private fun stripPrivateClassFromType(
+        type: Type,
+        cu: CompilationUnit,
+    ) {
+        if (type is ClassOrInterfaceType) {
+            val typeArgs = type.typeArguments.orElse(null)
+            if (typeArgs != null) {
+                // Check if any type argument references an inner class (contains '.')
+                // Inner classes in type arguments often cause private access issues
+                val hasInnerClassRef =
+                    typeArgs.any { typeArg ->
+                        typeArg is ClassOrInterfaceType && typeArg.nameAsString.contains('.')
+                    }
+                if (hasInnerClassRef) {
+                    type.removeTypeArguments()
+                }
+            }
+        }
+    }
+
+    /**
+     * Fix generic types in super()/this() call arguments.
+     * The Vineflower pass generates casts using erased types from descriptors.
+     * This method looks up the actual generic signatures and updates the cast types.
+     *
+     * @param parentTypeArgs Type arguments from the extends clause (e.g., ["DynamicLayerEntry"] for Layer<DynamicLayerEntry>)
+     */
+    private fun fixGenericTypesInDelegateCall(
+        delegateCall: ExplicitConstructorInvocationStmt,
+        fullyQualifiedClassName: String,
+        parentClassName: String?,
+        parentTypeArgs: List<String>,
+        packageName: String,
+        cu: CompilationUnit,
+    ) {
+        if (signatureIndex == null) return
+
+        // Determine target class: this() calls target current class, super() calls parent
+        val isThisCall = delegateCall.isThis
+
+        // For this() calls in generic classes, we can't properly substitute type parameters
+        // because we don't have concrete type arguments - skip fixing to avoid bound violations
+        if (isThisCall) {
+            val currentTypeParams = signatureIndex.getTypeParameters(fullyQualifiedClassName)
+            if (!currentTypeParams.isNullOrEmpty()) {
+                return // Skip fixing for this() calls in generic classes
+            }
+        }
+
+        val targetClassName =
+            if (isThisCall) {
+                fullyQualifiedClassName
+            } else {
+                // For super(), we need to resolve the parent class name
+                if (parentClassName != null) {
+                    resolveParentClassName(parentClassName, packageName, fullyQualifiedClassName, cu)
+                } else {
+                    return // No parent class to resolve
+                }
+            }
+
+        // Get all constructors for the target class
+        val constructors = signatureIndex.getConstructors(targetClassName)
+        if (constructors == null) {
+            return
+        }
+
+        // Find matching constructor using fuzzy matching
+        // Vineflower may generate Object for type parameters, so we can't rely on exact descriptors
+        val genericSignatures = findMatchingConstructor(delegateCall.arguments, constructors, cu)
+
+        if (genericSignatures == null) {
+            return
+        }
+
+        // Get type parameter names from target class for substitution
+        val typeParamNames = signatureIndex.getTypeParameters(targetClassName) ?: emptyList()
+
+        // Update cast types in arguments
+        delegateCall.arguments.forEachIndexed { index, arg ->
+            if (index < genericSignatures.size) {
+                updateCastType(arg, genericSignatures[index], typeParamNames, parentTypeArgs, packageName, cu)
+            }
+        }
+    }
+
+    /**
+     * Find matching constructor using fuzzy matching.
+     *
+     * Vineflower may generate Object or Object[] for type parameters, so exact
+     * descriptor matching won't work. Instead we:
+     * 1. Try exact match first
+     * 2. Match by parameter count
+     * 3. If multiple matches, prefer the one with best type compatibility
+     */
+    private fun findMatchingConstructor(
+        arguments: NodeList<Expression>,
+        constructors: Map<String, List<TypeSignature>>,
+        cu: CompilationUnit?,
+    ): List<TypeSignature>? {
+        val argCount = arguments.size
+
+        // First try exact descriptor match
+        val descriptor = buildDescriptorFromArguments(arguments, cu)
+        constructors[descriptor]?.let { return it }
+
+        // Filter by parameter count
+        val byArity = constructors.filter { (_, params) -> params.size == argCount }
+
+        if (byArity.isEmpty()) return null
+        if (byArity.size == 1) return byArity.values.first()
+
+        // Multiple matches - try to find best match by comparing argument types
+        val argTypes = arguments.map { getArgumentType(it) }
+
+        // Score each candidate
+        val scored =
+            byArity.map { (desc, params) ->
+                val score =
+                    argTypes.zip(params).sumOf { (argType, paramSig) ->
+                        typeMatchScore(argType, paramSig)
+                    }
+                params to score
+            }
+
+        // Return the one with highest score
+        return scored.maxByOrNull { it.second }?.first
+    }
+
+    /**
+     * Score how well an argument type matches a parameter signature.
+     * Higher score = better match.
+     */
+    private fun typeMatchScore(
+        argType: Type?,
+        paramSig: TypeSignature,
+    ): Int {
+        if (argType == null) return 0
+
+        return when (paramSig) {
+            is io.github.classgraph.BaseTypeSignature -> {
+                // Primitive types - exact match required
+                if (argType is PrimitiveType) {
+                    val paramPrimitive = paramSig.typeStr
+                    val argPrimitive = argType.type.name.lowercase()
+                    if (paramPrimitive == argPrimitive) 10 else 0
+                } else {
+                    0
+                }
+            }
+
+            is io.github.classgraph.ArrayTypeSignature -> {
+                // Array types - check element type compatibility
+                if (argType is ArrayType) {
+                    // Both are arrays - bonus points
+                    5 + typeMatchScore(argType.componentType, paramSig.elementTypeSignature)
+                } else {
+                    0
+                }
+            }
+
+            is io.github.classgraph.ClassRefTypeSignature -> {
+                // Class types - check name match
+                if (argType is ClassOrInterfaceType) {
+                    val argName = argType.nameAsString
+                    val paramName = paramSig.fullyQualifiedClassName.substringAfterLast('.')
+                    when {
+                        argName == paramName -> 10
+
+                        argName == "Object" -> 1
+
+                        // Object matches anything but weakly
+                        else -> 0
+                    }
+                } else {
+                    0
+                }
+            }
+
+            is io.github.classgraph.TypeVariableSignature -> {
+                // Type variables match Object or the bound
+                if (argType is ClassOrInterfaceType && argType.nameAsString == "Object") 1 else 0
+            }
+
+            else -> {
+                0
+            }
+        }
+    }
+
+    /**
+     * Build the fully qualified class name for a class declaration,
+     * using $ for nested classes as the JVM does.
+     */
+    private fun buildFullyQualifiedClassName(
+        classDecl: ClassOrInterfaceDeclaration,
+        packageName: String,
+    ): String {
+        val nestedPath = mutableListOf(classDecl.nameAsString)
+
+        // Walk up the parent chain to find enclosing classes
+        var parent = classDecl.parentNode.orElse(null)
+        while (parent != null) {
+            when (parent) {
+                is ClassOrInterfaceDeclaration -> nestedPath.add(0, parent.nameAsString)
+                is EnumDeclaration -> nestedPath.add(0, parent.nameAsString)
+            }
+            parent = parent.parentNode.orElse(null)
+        }
+
+        // Build the name: package.OuterClass$InnerClass$...
+        val classPath = nestedPath.joinToString("$")
+        return if (packageName.isNotEmpty()) "$packageName.$classPath" else classPath
+    }
+
+    /**
+     * Resolve the parent class name, handling nested classes.
+     */
+    private fun resolveParentClassName(
+        parentClassName: String,
+        packageName: String,
+        currentClassName: String,
+        cu: CompilationUnit,
+    ): String {
+        // Check if it's a reference to a sibling nested class (e.g., Layer in LayerContainer)
+        // In JavaParser, this appears as just "Layer" but the JVM name is "LayerContainer$Layer"
+        val outerClass = currentClassName.substringBeforeLast('$', currentClassName)
+
+        // Handle nested class references like "Evaluator.OptionHolder" -> "package.Evaluator$OptionHolder"
+        if (parentClassName.contains('.')) {
+            // Convert dots to $ for nested classes and try to resolve the outer class
+            val parts = parentClassName.split('.')
+            val outerClassName = parts.first()
+            val nestedPath = parts.drop(1).joinToString("$")
+
+            // Try to resolve the outer class
+            val resolvedOuter = resolveSimpleClassName(outerClassName, packageName, cu)
+            if (resolvedOuter != null) {
+                val fullName = "$resolvedOuter\$$nestedPath"
+                if (signatureIndex?.getConstructors(fullName) != null) {
+                    return fullName
+                }
+            }
+
+            // Try as-is with dots converted to $
+            val withDollar = parentClassName.replace('.', '$')
+            if (packageName.isNotEmpty()) {
+                val withPackage = "$packageName.$withDollar"
+                if (signatureIndex?.getConstructors(withPackage) != null) {
+                    return withPackage
+                }
+            }
+        }
+
+        // If the parent is a simple class name (no dots)
+        if (!parentClassName.contains('.')) {
+            // Try as nested class of outer class
+            val asNestedClass = "$outerClass\$$parentClassName"
+            if (signatureIndex?.getConstructors(asNestedClass) != null) {
+                return asNestedClass
+            }
+
+            // Try with package prefix
+            if (packageName.isNotEmpty()) {
+                val withPackage = "$packageName.$parentClassName"
+                if (signatureIndex?.getConstructors(withPackage) != null) {
+                    return withPackage
+                }
+            }
+        }
+
+        // Check imports
+        for (import in cu.imports) {
+            if (import.isAsterisk) continue
+            val importedName = import.nameAsString
+            val simpleParent = parentClassName.substringBefore('.')
+            if (importedName.endsWith(".$simpleParent")) {
+                // Found import for outer class, append nested part
+                val nestedPart = parentClassName.substringAfter('.', "")
+                return if (nestedPart.isNotEmpty()) {
+                    "$importedName\$${nestedPart.replace('.', '$')}"
+                } else {
+                    importedName
+                }
+            }
+        }
+
+        // Default: same package with $ for nested classes
+        val normalizedName = parentClassName.replace('.', '$')
+        return if (packageName.isNotEmpty()) "$packageName.$normalizedName" else normalizedName
+    }
+
+    /**
+     * Resolve a simple class name (no dots) to its fully qualified form.
+     */
+    private fun resolveSimpleClassName(
+        simpleName: String,
+        packageName: String,
+        cu: CompilationUnit,
+    ): String? {
+        // Check imports
+        for (import in cu.imports) {
+            if (import.isAsterisk) continue
+            if (import.nameAsString.endsWith(".$simpleName")) {
+                return import.nameAsString
+            }
+        }
+
+        // Try same package
+        if (packageName.isNotEmpty()) {
+            val withPackage = "$packageName.$simpleName"
+            if (signatureIndex?.getConstructors(withPackage) != null) {
+                return withPackage
+            }
+        }
+
         return null
     }
 
     /**
-     * Create a casted new Object() expression for the given type.
-     * For primitives, uses double-cast through wrapper: (int)(Integer) new Object()
-     * For reference types, uses: (Type) new Object()
+     * Build a JVM method descriptor from argument expressions.
+     * This is used to match against constructors in the signature index.
      */
-    private fun createCastedObject(type: Type): Expression {
-        val newObject = ObjectCreationExpr(null, ClassOrInterfaceType(null, "Object"), NodeList())
+    private fun buildDescriptorFromArguments(
+        arguments: NodeList<Expression>,
+        cu: CompilationUnit?,
+    ): String {
+        val params =
+            arguments.joinToString("") { arg ->
+                typeToDescriptor(getArgumentType(arg), cu)
+            }
+        return "($params)V"
+    }
 
-        return if (type is PrimitiveType) {
-            // For primitives: (primitive)(Wrapper) new Object()
-            val wrapperType =
-                when (type.type) {
-                    PrimitiveType.Primitive.BOOLEAN -> "Boolean"
-                    PrimitiveType.Primitive.BYTE -> "Byte"
-                    PrimitiveType.Primitive.CHAR -> "Character"
-                    PrimitiveType.Primitive.SHORT -> "Short"
-                    PrimitiveType.Primitive.INT -> "Integer"
-                    PrimitiveType.Primitive.LONG -> "Long"
-                    PrimitiveType.Primitive.FLOAT -> "Float"
-                    PrimitiveType.Primitive.DOUBLE -> "Double"
+    /**
+     * Get the type of an argument expression.
+     * For cast expressions, returns the cast target type.
+     * For literals, returns the literal type.
+     */
+    private fun getArgumentType(arg: Expression): Type? =
+        when (arg) {
+            is CastExpr -> {
+                arg.type
+            }
+
+            is NullLiteralExpr -> {
+                null
+            }
+
+            // Can't determine type from bare null
+            is BooleanLiteralExpr -> {
+                PrimitiveType.booleanType()
+            }
+
+            is IntegerLiteralExpr -> {
+                PrimitiveType.intType()
+            }
+
+            is LongLiteralExpr -> {
+                PrimitiveType.longType()
+            }
+
+            is DoubleLiteralExpr -> {
+                val value = arg.value
+                if (value.endsWith("f") || value.endsWith("F")) {
+                    PrimitiveType.floatType()
+                } else {
+                    PrimitiveType.doubleType()
                 }
-            val wrapperCast = CastExpr(ClassOrInterfaceType(null, wrapperType), newObject)
-            CastExpr(type, wrapperCast)
-        } else {
-            // For reference types: (Type) new Object()
-            CastExpr(type, newObject)
+            }
+
+            is CharLiteralExpr -> {
+                PrimitiveType.charType()
+            }
+
+            else -> {
+                null
+            }
+        }
+
+    /**
+     * Convert a JavaParser Type to a JVM descriptor string.
+     * Note: This uses the erased type name as it appears in the cast expression,
+     * which should match the bytecode descriptor.
+     */
+    private fun typeToDescriptor(
+        type: Type?,
+        cu: CompilationUnit?,
+    ): String {
+        if (type == null) return "Ljava/lang/Object;"
+
+        return when (type) {
+            is PrimitiveType -> {
+                when (type.type) {
+                    PrimitiveType.Primitive.BOOLEAN -> "Z"
+                    PrimitiveType.Primitive.BYTE -> "B"
+                    PrimitiveType.Primitive.CHAR -> "C"
+                    PrimitiveType.Primitive.SHORT -> "S"
+                    PrimitiveType.Primitive.INT -> "I"
+                    PrimitiveType.Primitive.LONG -> "J"
+                    PrimitiveType.Primitive.FLOAT -> "F"
+                    PrimitiveType.Primitive.DOUBLE -> "D"
+                }
+            }
+
+            is ArrayType -> {
+                "[" + typeToDescriptor(type.componentType, cu)
+            }
+
+            is ClassOrInterfaceType -> {
+                // Get the raw type name (without generics)
+                val simpleName = type.nameWithScope
+                // Try to resolve the fully qualified name
+                val fqn = resolveFullyQualifiedName(simpleName, cu)
+                // Convert to JVM internal name format
+                // Package separators become /, nested class separators become $
+                val internalName = toJvmInternalName(fqn, cu)
+                "L$internalName;"
+            }
+
+            else -> {
+                "Ljava/lang/Object;"
+            }
         }
     }
 
     /**
-     * Create a casted new Object() by inferring the type from an expression.
-     * Used as fallback when we can't find the target constructor's parameter types.
+     * Convert a fully qualified name to JVM internal name format.
+     * Package separators (.) become /, nested class separators become $.
      */
-    private fun createCastedObjectFromExpr(expr: Expression): Expression {
-        val newObject = ObjectCreationExpr(null, ClassOrInterfaceType(null, "Object"), NodeList())
+    private fun toJvmInternalName(
+        fqn: String,
+        cu: CompilationUnit?,
+    ): String {
+        val packageName = cu?.packageDeclaration?.map { it.nameAsString }?.orElse("") ?: ""
 
-        // Try to infer the type from the expression
-        return when (expr) {
-            is CastExpr -> {
-                createCastedObject(expr.type)
-            }
+        // If the name starts with the package, the rest might contain nested classes
+        if (packageName.isNotEmpty() && fqn.startsWith("$packageName.")) {
+            val classPath = fqn.substring(packageName.length + 1) // Skip package and dot
+            // The class path might be "OuterClass.InnerClass" which should become "OuterClass$InnerClass"
+            val packagePart = packageName.replace('.', '/')
+            val classPart = classPath.replace('.', '$')
+            return "$packagePart/$classPart"
+        }
 
-            is StringLiteralExpr -> {
-                StringLiteralExpr("")
-            }
+        // For classes outside current package, try to find them in the signature index
+        // Try progressively converting dots to $ starting from the right
+        val parts = fqn.split('.')
+        for (splitPoint in (parts.size - 1) downTo 1) {
+            val packagePart = parts.subList(0, splitPoint).joinToString(".")
+            val classPart = parts.subList(splitPoint, parts.size).joinToString("$")
+            val candidateFqn = "$packagePart.$classPart"
 
-            is CharLiteralExpr -> {
-                CharLiteralExpr(' ')
-            }
-
-            is BooleanLiteralExpr -> {
-                BooleanLiteralExpr(false)
-            }
-
-            is IntegerLiteralExpr -> {
-                IntegerLiteralExpr("0")
-            }
-
-            is LongLiteralExpr -> {
-                LongLiteralExpr("0L")
-            }
-
-            is DoubleLiteralExpr -> {
-                DoubleLiteralExpr("0.0")
-            }
-
-            is ObjectCreationExpr,
-            is NullLiteralExpr,
-            -> {
-                NullLiteralExpr()
-            }
-
-            is ArrayCreationExpr -> {
-                CastExpr(ClassOrInterfaceType(null, "Object"), newObject)
-            }
-
-            else -> {
-                // Default: cast to Object (will compile, may need manual fix)
-                CastExpr(ClassOrInterfaceType(null, "Object"), newObject)
+            if (signatureIndex?.getConstructors(candidateFqn) != null) {
+                return packagePart.replace('.', '/') + "/" + classPart
             }
         }
+
+        // Default: just replace dots with slashes (no nested classes detected)
+        return fqn.replace('.', '/')
+    }
+
+    /**
+     * Resolve a simple or partially qualified class name to a fully qualified name.
+     */
+    private fun resolveFullyQualifiedName(
+        name: String,
+        cu: CompilationUnit?,
+    ): String {
+        if (cu == null) return name
+
+        // Already fully qualified?
+        if (name.contains('.') && !name.startsWith("java.") && signatureIndex?.getConstructors(name) != null) {
+            return name
+        }
+
+        // Check imports
+        for (import in cu.imports) {
+            if (import.isAsterisk) continue
+            val importedName = import.nameAsString
+            if (importedName.endsWith(".$name") || importedName.endsWith(name)) {
+                return importedName
+            }
+        }
+
+        // Check java.lang
+        val javaLangName = "java.lang.$name"
+        if (name == "String" || name == "Object" || name == "Integer" || name == "Long" ||
+            name == "Boolean" || name == "Character" || name == "Byte" || name == "Short" ||
+            name == "Float" || name == "Double" || name == "Void" || name == "Class" ||
+            name == "Throwable" || name == "Exception" || name == "RuntimeException" ||
+            name == "Error" || name == "Thread" || name == "Runnable"
+        ) {
+            return javaLangName
+        }
+
+        // Check same package
+        val packageName = cu.packageDeclaration.map { it.nameAsString }.orElse("")
+        if (packageName.isNotEmpty()) {
+            val samePackageName = "$packageName.$name"
+            if (signatureIndex?.getConstructors(samePackageName) != null) {
+                return samePackageName
+            }
+        }
+
+        // Return as-is (might be in same package or unresolved)
+        return if (packageName.isNotEmpty()) "$packageName.$name" else name
+    }
+
+    /**
+     * Update the cast type in a cast expression if it needs generic arguments.
+     *
+     * @param typeParamNames Type parameter names from the target class (e.g., ["T"])
+     * @param typeArgs Actual type arguments from the extends clause (e.g., ["DynamicLayerEntry"])
+     */
+    private fun updateCastType(
+        arg: Expression,
+        genericSignature: TypeSignature,
+        typeParamNames: List<String>,
+        typeArgs: List<String>,
+        packageName: String,
+        cu: CompilationUnit,
+    ) {
+        if (arg !is CastExpr) return
+
+        // Build substitution map: T -> DynamicLayerEntry
+        val substitutions = typeParamNames.zip(typeArgs).toMap()
+
+        val newType = TypeSignatureRenderer.toJavaParserType(genericSignature, substitutions, packageName, cu)
+        arg.setType(newType)
     }
 
     private fun processMethod(method: MethodDeclaration): ProcessResult {
@@ -564,6 +1083,17 @@ class StubPostProcessor(
 
         // Replace <unrepresentable>.$assertionsDisabled with true (assertions disabled)
         result = result.replace("<unrepresentable>.\$assertionsDisabled", "true")
+
+        // Replace various $assertionsDisabled patterns that can appear in decompiled code
+        // Vineflower sometimes outputs these without proper class references
+        result = result.replace("<unrepresentable>.\$assertionsDisabled", "true")
+        result = result.replace("!.\$assertionsDisabled", "false")
+        result = result.replace(".\$assertionsDisabled", "true")
+        result = result.replace("!.assertionsDisabled", "false")
+        result = result.replace(".assertionsDisabled", "true")
+        // Handle bare $assertionsDisabled (without class prefix) - common in records
+        result = result.replace("!\$assertionsDisabled", "false")
+        result = result.replace("\$assertionsDisabled", "true")
 
         // Remove static blocks from interfaces (they can contain invalid decompiler output)
         result = removeInterfaceStaticBlocks(result)

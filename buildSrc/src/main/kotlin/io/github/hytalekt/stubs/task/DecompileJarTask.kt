@@ -1,5 +1,6 @@
 package io.github.hytalekt.stubs.task
 
+import io.github.hytalekt.stubs.vineflower.StubGeneratorPluginSource
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -8,6 +9,7 @@ import org.jetbrains.java.decompiler.api.Decompiler
 import org.jetbrains.java.decompiler.main.decompiler.DirectoryResultSaver
 import org.jetbrains.java.decompiler.main.decompiler.PrintStreamLogger
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences
+import org.jetbrains.java.decompiler.main.plugins.PluginSources
 
 abstract class DecompileJarTask : DefaultTask() {
     @get:InputFile
@@ -31,6 +33,11 @@ abstract class DecompileJarTask : DefaultTask() {
         outDir.mkdirs()
 
         logger.lifecycle("Decompiling ${jarFile.name}...")
+
+        if (StubGeneratorPluginSource !in PluginSources.PLUGIN_SOURCES) {
+            PluginSources.PLUGIN_SOURCES.add(StubGeneratorPluginSource)
+        }
+
         val decompiler =
             Decompiler
                 .builder()
