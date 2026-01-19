@@ -136,35 +136,29 @@ abstract class EnhanceWithAITask : DefaultTask() {
                 file.readText()
             }
 
-        // Track cache hits for reporting
+        // Check cache status before processing for reporting
         var cacheHits = 0
         var apiCalls = 0
-
-        // Generate enhanced stubs with progress
-        val enhancedStubs = mutableMapOf<String, String>()
-        var current = 0
-        val total = decompiledSources.size
-
-        for ((className, source) in decompiledSources) {
-            current++
-            val cacheKey = generator.computeCacheKey(source, className)
+        decompiledSources.forEach { (_, source) ->
+            val cacheKey = generator.computeCacheKey(source)
             val cacheFile = File(aiCacheDir, "$cacheKey.txt")
-            val fromCache = cacheFile.exists()
-
-            if (fromCache) {
-                cacheHits++
-                logger.lifecycle("  [$current/$total] $className (cached)")
-            } else {
-                apiCalls++
-                logger.lifecycle("  [$current/$total] $className (API call)")
-            }
-
-            enhancedStubs[className] = generator.generateStub(source, className)
+            if (cacheFile.exists()) cacheHits++ else apiCalls++
         }
 
+        logger.lifecycle("Processing ${decompiledSources.size} files ($cacheHits cached, $apiCalls API calls)...")
+
+        // Generate enhanced stubs in parallel with progress callback
+        val result =
+            generator.generateStubs(decompiledSources) { className, current, total ->
+                logger.lifecycle("  [$current/$total] $className")
+            }
+
+        // Print report of skipped files
+        result.printReport()
+
         // Write enhanced stubs to output
-        logger.lifecycle("Writing enhanced stubs...")
-        enhancedStubs.forEach { (className, source) ->
+        logger.lifecycle("Writing ${result.stubs.size} enhanced stubs...")
+        result.stubs.forEach { (className, source) ->
             val relativePath = className.replace('.', File.separatorChar) + ".java"
             val targetFile = File(outDir, relativePath)
             targetFile.parentFile.mkdirs()
@@ -172,7 +166,7 @@ abstract class EnhanceWithAITask : DefaultTask() {
         }
 
         logger.lifecycle("AI enhancement complete!")
-        logger.lifecycle("  Cache hits: $cacheHits, API calls: $apiCalls")
+        logger.lifecycle("  Processed: ${result.stubs.size}, Skipped: ${result.skipped.size}")
         logger.lifecycle("  Output: ${outDir.absolutePath}")
     }
 }
