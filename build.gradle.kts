@@ -53,10 +53,11 @@ val decompileJar =
  */
 val enhanceWithAI =
     tasks.register<EnhanceWithAITask>("enhanceWithAI") {
-        dependsOn(decompileJar)
         decompiledSourcesDir = decompileJar.flatMap { it.outputDirectory }
         outputDirectory = layout.buildDirectory.dir("gen/ai-stubs")
         aiCacheDirectory = layout.buildDirectory.dir("cache/ai-responses")
+        classFilter = "com.hypixel.*"
+        model = "google/gemini-2.5-flash-lite"
 
     /*
     if (project.hasProperty("openRouterApiKey")) {
