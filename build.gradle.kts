@@ -48,7 +48,10 @@ tasks.register<DecompileJarTask>("decompileJar") {
 }
 
 tasks.register<ProcessStubsTask>("processStubs") {
+    dependsOn("decompileJar")
+    inputJar = layout.projectDirectory.file("input.jar")
     inputDirectory = layout.buildDirectory.dir("gen/sources")
+    patchesDirectory = layout.projectDirectory.dir("patches")
 }
 
 tasks.compileJava {
