@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.vineflower)
     implementation(libs.javaparser)
+    implementation(libs.classgraph)
 
     testImplementation(gradleTestKit())
     testImplementation(libs.bundles.kotest)
