@@ -1,6 +1,5 @@
 package io.github.hytalekt.stubs.task
 
-import io.github.hytalekt.stubs.postprocess.StubPostProcessor
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -10,7 +9,7 @@ import org.jetbrains.java.decompiler.main.decompiler.DirectoryResultSaver
 import org.jetbrains.java.decompiler.main.decompiler.PrintStreamLogger
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences
 
-abstract class GenerateSourcesTask : DefaultTask() {
+abstract class DecompileJarTask : DefaultTask() {
     @get:InputFile
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceJar: RegularFileProperty
@@ -19,8 +18,8 @@ abstract class GenerateSourcesTask : DefaultTask() {
     abstract val outputDirectory: DirectoryProperty
 
     init {
-        group = "documentation"
-        description = "Generates stub sources from a JAR using Vineflower decompiler"
+        group = "stubs"
+        description = "Decompiles a JAR to a specified location using Vineflower"
     }
 
     @TaskAction
@@ -31,13 +30,19 @@ abstract class GenerateSourcesTask : DefaultTask() {
         outDir.deleteRecursively()
         outDir.mkdirs()
 
-        // Step 1: Decompile normally with Vineflower
         logger.lifecycle("Decompiling ${jarFile.name}...")
         val decompiler =
             Decompiler
                 .builder()
                 .inputs(jarFile)
                 .option(IFernflowerPreferences.INCLUDE_ENTIRE_CLASSPATH, false)
+                .option(IFernflowerPreferences.SWITCH_EXPRESSIONS, false)
+                .option(IFernflowerPreferences.PATTERN_MATCHING, false)
+                .option(IFernflowerPreferences.DECOMPILE_COMPLEX_CONDYS, false)
+                .option(IFernflowerPreferences.DECOMPILE_ASSERTIONS, false)
+                .option(IFernflowerPreferences.TERNARY_CONDITIONS, false)
+                .option(IFernflowerPreferences.INCLUDE_ENTIRE_CLASSPATH, true)
+                .option(IFernflowerPreferences.SKIP_EXTRA_FILES, true)
                 .output(DirectoryResultSaver(outDir))
                 .allowedPrefixes("com/hypixel")
                 .logger(PrintStreamLogger(System.out))
@@ -45,10 +50,5 @@ abstract class GenerateSourcesTask : DefaultTask() {
 
         decompiler.decompile()
         logger.lifecycle("Decompiled ${jarFile.name} to ${outDir.absolutePath}")
-
-        // Step 2: Post-process to convert to stubs
-        logger.lifecycle("Post-processing decompiled sources into stubs...")
-        StubPostProcessor.processDirectory(outDir)
-        logger.lifecycle("Post-processing complete")
     }
 }

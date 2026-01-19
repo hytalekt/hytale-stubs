@@ -5,7 +5,7 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(24)
 }
 
 repositories {
@@ -15,9 +15,6 @@ repositories {
 dependencies {
     implementation(libs.plugin.kotlin)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.classgraph)
-    implementation(libs.javapoet)
-    implementation(libs.asm.core)
     implementation(libs.vineflower)
     implementation(libs.javaparser)
 
@@ -27,4 +24,10 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+configurations.all {
+    resolutionStrategy {
+        force(libs.javaparser)
+    }
 }

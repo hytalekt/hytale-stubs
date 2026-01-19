@@ -6,7 +6,7 @@ asm = "9.9.1"
 classgraph = "4.8.184"
 javapoet = "0.9.0"
 vineflower = "1.11.2"
-javaparser = "3.26.4"
+javaparser = "3.28.0"
 
 [libraries]
 plugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
