@@ -2,6 +2,7 @@ package io.github.hytalekt.stubs.decompile
 
 import org.jetbrains.java.decompiler.api.Decompiler
 import org.jetbrains.java.decompiler.main.decompiler.DirectoryResultSaver
+import org.jetbrains.java.decompiler.main.decompiler.PrintStreamLogger
 import org.jetbrains.java.decompiler.main.extern.IFernflowerLogger
 import org.jetbrains.java.decompiler.main.extern.IFernflowerPreferences
 import java.io.File
@@ -11,7 +12,6 @@ import java.io.File
  */
 class VineflowerDecompiler(
     private val outputDir: File,
-    private val logger: DecompilerLogger? = null,
 ) {
     /**
      * Decompile a JAR file to Java source files.
@@ -26,37 +26,13 @@ class VineflowerDecompiler(
     ): Map<String, File> {
         outputDir.mkdirs()
 
-        val decompilerLogger =
-            logger?.let { VineflowerLoggerAdapter(it) }
-                ?: VineflowerLoggerAdapter(
-                    object : DecompilerLogger {
-                        override fun log(
-                            level: LogLevel,
-                            message: String,
-                        ) {
-                            if (level == LogLevel.ERROR) {
-                                System.err.println("[Vineflower] $message")
-                            }
-                        }
-                    },
-                )
-
         val builder =
             Decompiler
                 .Builder()
                 .inputs(jarFile)
                 .output(DirectoryResultSaver(outputDir))
-                .logger(decompilerLogger)
-                // Configure for best output quality
-                .option(IFernflowerPreferences.DECOMPILE_GENERIC_SIGNATURES, "1")
-                .option(IFernflowerPreferences.REMOVE_SYNTHETIC, "1")
-                .option(IFernflowerPreferences.REMOVE_BRIDGE, "1")
-                .option(IFernflowerPreferences.INCLUDE_ENTIRE_CLASSPATH, "0")
-                .option(IFernflowerPreferences.ASCII_STRING_CHARACTERS, "0")
-                .option(IFernflowerPreferences.BYTECODE_SOURCE_MAPPING, "0")
-                .option(IFernflowerPreferences.DUMP_CODE_LINES, "0")
-                .option(IFernflowerPreferences.INDENT_STRING, "    ")
-                .option(IFernflowerPreferences.NEW_LINE_SEPARATOR, "1")
+                .allowedPrefixes("com/hypixel")
+                .logger(PrintStreamLogger(System.out))
 
         // Add library JARs for better type resolution
         libraries.forEach { lib ->
@@ -87,50 +63,5 @@ class VineflowerDecompiler(
             }
 
         return results
-    }
-}
-
-interface DecompilerLogger {
-    fun log(
-        level: LogLevel,
-        message: String,
-    )
-}
-
-enum class LogLevel {
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
-}
-
-private class VineflowerLoggerAdapter(
-    private val logger: DecompilerLogger,
-) : IFernflowerLogger() {
-    override fun writeMessage(
-        message: String?,
-        severity: Severity?,
-    ) {
-        if (message == null) return
-        val level =
-            when (severity) {
-                Severity.TRACE -> LogLevel.DEBUG
-                Severity.INFO -> LogLevel.INFO
-                Severity.WARN -> LogLevel.WARN
-                Severity.ERROR -> LogLevel.ERROR
-                null -> LogLevel.INFO
-            }
-        logger.log(level, message)
-    }
-
-    override fun writeMessage(
-        message: String?,
-        severity: Severity?,
-        t: Throwable?,
-    ) {
-        writeMessage(message, severity)
-        if (t != null) {
-            logger.log(LogLevel.ERROR, t.stackTraceToString())
-        }
     }
 }
